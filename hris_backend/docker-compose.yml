@@ -1,21 +1,21 @@
-version: '3.8'
-
 services:
   web:
     # image: odoo:17.0 # Hapus atau komen baris ini!
     build:
       context: . # Ini memberitahu Docker untuk mencari Dockerfile di direktori saat ini
-      dockerfile: Dockerfile # Ini memberitahu Docker nama file Dockerfile yang akan digunakan
+      dockerfile: Dockerfile
     depends_on:
       - db
     ports:
-      - "8069:8069" # Odoo accessible via http://localhost:8069    volumes:
+      - "8069:8069" # Odoo accessible via http://localhost:8069
+    volumes:
       - odoo-web-data:/var/lib/odoo
       # Pastikan folder custom-addons ini ada di direktori yang sama dengan docker-compose.yml Anda di host
       - ./custom-addons:/mnt/extra-addons
       # API modules untuk REST API
       - ./api-modules:/mnt/api-modules
-      # - ./config:/etc/odoo # Anda bisa uncomment ini jika ingin mengelola odoo.conf dari host
+      # Mount config folder
+      - ./config:/etc/odoo
     environment:
       - HOST=db
       - USER=odoo

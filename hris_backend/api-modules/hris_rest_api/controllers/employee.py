@@ -45,7 +45,7 @@ class EmployeeController(http.Controller):
             status=status
         )
     
-    @http.route('/api/employees', type='http', auth='user', methods=['GET', 'OPTIONS'], csrf=False)
+    @http.route('/api/employees', type='http', auth='public', methods=['GET', 'OPTIONS'], csrf=False)
     def get_employees(self):
         """Get all employees"""
         if request.httprequest.method == 'OPTIONS':

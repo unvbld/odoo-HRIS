@@ -1,0 +1,98 @@
+### Health Check
+GET http://localhost:8069/api/health
+
+### API Version
+GET http://localhost:8069/api/version
+
+###
+
+### Login
+POST http://localhost:8069/api/auth/login
+Content-Type: application/json
+
+{
+    "username": "admin",
+    "password": "admin"
+}
+
+### Get Profile (replace YOUR_SESSION_ID with actual session from login)
+GET http://localhost:8069/api/auth/profile
+Cookie: session_id=YOUR_SESSION_ID
+
+### Logout
+POST http://localhost:8069/api/auth/logout
+Cookie: session_id=YOUR_SESSION_ID
+
+###
+
+### Get Employees
+GET http://localhost:8069/api/employees?limit=10
+Cookie: session_id=YOUR_SESSION_ID
+
+### Get Specific Employee
+GET http://localhost:8069/api/employees/1
+Cookie: session_id=YOUR_SESSION_ID
+
+### Get Departments
+GET http://localhost:8069/api/departments
+Cookie: session_id=YOUR_SESSION_ID
+
+###
+
+### Get Leave Types
+GET http://localhost:8069/api/leave-types
+Cookie: session_id=YOUR_SESSION_ID
+
+### Get Leave Requests
+GET http://localhost:8069/api/leaves?limit=10
+Cookie: session_id=YOUR_SESSION_ID
+
+### Create Leave Request
+POST http://localhost:8069/api/leaves
+Content-Type: application/json
+Cookie: session_id=YOUR_SESSION_ID
+
+{
+    "employee_id": 1,
+    "holiday_status_id": 1,
+    "request_date_from": "2025-07-01",
+    "request_date_to": "2025-07-05",
+    "name": "Summer Vacation",
+    "notes": "Family vacation"
+}
+
+### Get Leave Balance
+GET http://localhost:8069/api/leave-balance/1
+Cookie: session_id=YOUR_SESSION_ID
+
+###
+
+### Check Attendance Status
+GET http://localhost:8069/api/attendance/status/1
+Cookie: session_id=YOUR_SESSION_ID
+
+### Check-in
+POST http://localhost:8069/api/attendance/checkin
+Content-Type: application/json
+Cookie: session_id=YOUR_SESSION_ID
+
+{
+    "employee_id": 1,
+    "location": "Office",
+    "notes": "On time"
+}
+
+### Check-out
+POST http://localhost:8069/api/attendance/checkout
+Content-Type: application/json
+Cookie: session_id=YOUR_SESSION_ID
+
+{
+    "employee_id": 1,
+    "location": "Office",
+    "notes": "End of day"
+}
+
+### Get Attendance Records
+GET http://localhost:8069/api/attendance?employee_id=1&limit=10
+Cookie: session_id=YOUR_SESSION_ID

@@ -6,16 +6,10 @@
     'description': """
         This module provides REST API endpoints for the HRIS Flutter application.
         It includes authentication, employee management, leave management, and other HR features.
-    """,
-    'author': 'Your Company',
-    'website': 'https://www.yourcompany.com',
-    'depends': [
+    """,    'author': 'Your Company',
+    'website': 'https://www.yourcompany.com',    'depends': [
         'base',
         'hr',
-        'hr_holidays',
-        'hr_attendance',
-        'hr_payroll_community',
-        'project',
     ],
     'data': [
         'security/ir.model.access.csv',
