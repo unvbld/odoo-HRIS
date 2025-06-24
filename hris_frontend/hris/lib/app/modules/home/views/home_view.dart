@@ -8,9 +8,10 @@ class HomeView extends GetView<HomeController> {
   
   @override
   Widget build(BuildContext context) {
-    final AuthService authService = Get.find<AuthService>();
-    
-    return Scaffold(
+    try {
+      final AuthService authService = Get.find<AuthService>();
+      
+      return Scaffold(
       appBar: AppBar(
         title: const Text('HRIS Dashboard'),
         centerTitle: true,
@@ -66,7 +67,7 @@ class HomeView extends GetView<HomeController> {
                         CircleAvatar(
                           backgroundColor: const Color(0xFF667eea),
                           child: Text(
-                            authService.currentUser?.name.substring(0, 1).toUpperCase() ?? 'U',
+                            _getInitials(authService.currentUser?.name),
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -179,6 +180,68 @@ class HomeView extends GetView<HomeController> {
         ),
       ),
     );
+    } catch (e, stackTrace) {
+      print('Error in HomeView build: $e');
+      print('Stack trace: $stackTrace');
+      
+      // Return error widget
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('HRIS Dashboard'),
+          backgroundColor: const Color(0xFF667eea),
+          foregroundColor: Colors.white,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Colors.red,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'An error occurred',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                e.toString(),
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Get.offAllNamed('/auth');
+                },
+                child: const Text('Back to Login'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+  
+  String _getInitials(String? name) {
+    if (name == null || name.trim().isEmpty) {
+      return 'U';
+    }
+    
+    final trimmedName = name.trim();
+    if (trimmedName.length >= 1) {
+      return trimmedName.substring(0, 1).toUpperCase();
+    }
+    
+    return 'U';
   }
   
   Widget _buildActionCard({

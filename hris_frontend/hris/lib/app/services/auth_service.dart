@@ -34,24 +34,30 @@ class AuthService extends GetxService {
     try {
       final sessionId = await _secureStorage.read(key: _sessionKey);
       final userData = _prefs.getString(_userKey);
-      
-      if (sessionId != null && userData != null) {
-        final userMap = Map<String, dynamic>.from(
-          Map.fromEntries(
-            userData.split('&').map((e) => MapEntry(
-              e.split('=')[0],
-              e.split('=')[1],
-            )),
-          ),
-        );
-        
-        final user = User.fromJson({
-          ...userMap,
-          'session_id': sessionId,
-        });
-        
-        _currentUser.value = user;
-        _isLoggedIn.value = true;
+        if (sessionId != null && userData != null) {
+        final userMap = <String, dynamic>{};
+          // Safe parsing of user data
+        try {
+          for (final pair in userData.split('&')) {
+            final parts = pair.split('=');
+            if (parts.length >= 2) {
+              final key = parts[0];
+              final value = Uri.decodeComponent(parts[1]);
+              userMap[key] = value;
+            }
+          }
+          
+          final user = User.fromJson({
+            ...userMap,
+            'session_id': sessionId,
+          });
+          
+          _currentUser.value = user;
+          _isLoggedIn.value = true;
+        } catch (e) {
+          print('Error parsing user data: $e');
+          await clearUserData();
+        }
       }
     } catch (e) {
       print('Error loading user from storage: $e');
@@ -133,9 +139,8 @@ class AuthService extends GetxService {
       if (user.sessionId != null) {
         await _secureStorage.write(key: _sessionKey, value: user.sessionId!);
       }
-      
-      // Simple serialization for user data (excluding sensitive session)
-      final userData = 'id=${user.id}&name=${user.name}&email=${user.email}';
+        // Simple serialization for user data (excluding sensitive session)
+      final userData = 'id=${user.id}&name=${Uri.encodeComponent(user.name)}&email=${Uri.encodeComponent(user.email)}';
       await _prefs.setString(_userKey, userData);
     } catch (e) {
       print('Error saving user to storage: $e');
