@@ -1,0 +1,93 @@
+class User {
+  final int id;
+  final String name;
+  final String email;
+  final String? sessionId;
+
+  User({
+    required this.id,
+    required this.name,
+    required this.email,
+    this.sessionId,
+  });
+
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: json['user_id'] ?? json['id'] ?? 0,
+      name: json['name'] ?? '',
+      email: json['login'] ?? json['email'] ?? '',
+      sessionId: json['session_token'] ?? json['session_id'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'email': email,
+      'session_id': sessionId,
+    };
+  }
+}
+
+class LoginRequest {
+  final String username;  // Changed from email to username to match API
+  final String password;
+
+  LoginRequest({
+    required this.username,
+    required this.password,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'username': username,
+      'password': password,
+    };
+  }
+}
+
+class RegisterRequest {
+  final String name;
+  final String email;
+  final String password;
+
+  RegisterRequest({
+    required this.name,
+    required this.email,
+    required this.password,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'email': email,
+      'password': password,
+    };
+  }
+}
+
+class ApiResponse<T> {
+  final bool success;
+  final String message;
+  final T? data;
+
+  ApiResponse({
+    required this.success,
+    required this.message,
+    this.data,
+  });
+
+  factory ApiResponse.fromJson(
+    Map<String, dynamic> json,
+    T Function(dynamic)? fromJsonT,
+  ) {
+    return ApiResponse<T>(
+      success: json['success'] ?? false,
+      message: json['message'] ?? '',
+      data: json['data'] != null && fromJsonT != null
+          ? fromJsonT(json['data'])
+          : json['data'],
+    );
+  }
+}
