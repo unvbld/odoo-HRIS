@@ -1,33 +1,205 @@
-# HARIS
+# HRIS Backend - Odoo with REST API
 
+HRIS (Human Resource Information System) backend menggunakan Odoo dengan custom REST API module untuk integrasi dengan Flutter mobile app.
 
+## 📋 Overview
 
-## Getting started
+Project ini terdiri dari:
+- **Backend**: Odoo 17 dengan custom REST API module
+- **Database**: PostgreSQL 
+- **Infrastructure**: Docker & Docker Compose
+- **API**: REST endpoints untuk authentication, employees, leaves, attendance
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## 🚀 Quick Start
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+### Prerequisites
+- Docker & Docker Compose
+- Git
+- PowerShell (Windows) atau Bash (Linux/Mac)
 
-## Add your files
+### 1. Clone & Setup
+```bash
+git clone <repository-url>
+cd hris_backend
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+# Start containers
+docker-compose up -d
+
+# Wait for containers to be ready (30-60 seconds)
+docker-compose ps
+```
+
+### 2. Install REST API Module
+1. Open browser: http://localhost:8069
+2. Create/Login to Odoo database
+3. Go to Apps > Search "HRIS REST API" > Install
+
+### 3. Test API
+```powershell
+# Health check
+Invoke-RestMethod -Uri "http://localhost:8069/api/health" -Method GET
+
+# Run comprehensive test
+.\api-modules\hris_rest_api\test-api.ps1
+```
+
+## 🏗️ Architecture
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/tanjung.omni/haris.git
-git branch -M main
-git push -uf origin main
+hris_backend/
+├── api-modules/           # Custom REST API modules
+│   └── hris_rest_api/    # Main API module
+├── custom-addons/        # Additional Odoo addons
+├── config/               # Odoo configuration
+├── docker-compose.yml    # Container orchestration
+└── README.md            # This file
 ```
 
-## Integrate with your tools
+## 🔌 API Endpoints
 
-- [ ] [Set up project integrations](https://gitlab.com/tanjung.omni/haris/-/settings/integrations)
+### Authentication
+- `POST /api/auth/login` - User login
+- `POST /api/auth/logout` - User logout  
+- `GET /api/auth/profile` - Get user profile
 
-## Collaborate with your team
+### Health Check
+- `GET /api/health` - API health status
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
+### Employees (Coming Soon)
+- `GET /api/employees` - List employees
+- `GET /api/employees/{id}` - Get employee details
+- `GET /api/departments` - List departments
+
+### Leaves (Coming Soon)
+- `GET /api/leaves` - List leave requests
+- `POST /api/leaves` - Create leave request
+- `GET /api/leave-types` - List leave types
+
+### Attendance (Coming Soon)
+- `POST /api/attendance/checkin` - Check in
+- `POST /api/attendance/checkout` - Check out
+- `GET /api/attendance` - Get attendance records
+
+## 🧪 Testing API
+
+### Method 1: PowerShell Script (Recommended)
+```bash
+# Run automated test script
+.\api-modules\hris_rest_api\test-api.ps1
+
+# With custom parameters
+.\api-modules\hris_rest_api\test-api.ps1 -BaseUrl "http://localhost:8069" -Username "test@test.com"
+```
+
+### Method 2: VS Code REST Client
+1. Install "REST Client" extension in VS Code
+2. Open `api-modules/hris_rest_api/test-api.http`
+3. Click "Send Request" on any endpoint
+
+### Method 3: Manual cURL
+```bash
+# Health check
+curl -X GET http://localhost:8069/api/health
+
+# Login
+curl -X POST http://localhost:8069/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "apitest@test.com", "password": "test123"}'
+```
+
+## 📚 Documentation
+
+- **API Testing**: `api-modules/hris_rest_api/TESTING.md`
+- **API Documentation**: `api-modules/hris_rest_api/README.md` 
+- **Module Development**: See individual module READMEs
+
+## 🔧 Development
+
+### Adding New Endpoints
+1. Edit controllers in `api-modules/hris_rest_api/controllers/`
+2. Update `__init__.py` imports
+3. Restart Odoo: `docker-compose restart web`
+4. Test endpoints
+
+### Custom Addons
+- Add modules to `custom-addons/` directory
+- Update `docker-compose.yml` volumes if needed
+- Install via Odoo Apps interface
+
+### Database Access
+```bash
+# Access PostgreSQL
+docker exec -it hris_backend-db-1 psql -U odoo -d odoo
+
+# Access Odoo shell
+docker exec -it hris_backend-web-1 /usr/bin/odoo shell -d odoo --no-http --config=/etc/odoo/odoo.conf
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### Container Issues
+```bash
+# Check container status
+docker-compose ps
+
+# View logs
+docker logs hris_backend-web-1 --tail 50
+docker logs hris_backend-db-1 --tail 20
+
+# Restart containers
+docker-compose restart
+```
+
+#### API Issues
+```bash
+# Check if module is installed
+# Go to http://localhost:8069 > Apps > Search "HRIS REST API"
+
+# Create test user
+# See api-modules/hris_rest_api/TESTING.md
+```
+
+#### Database Issues
+```bash
+# Reset database (WARNING: Deletes all data)
+docker-compose down -v
+docker-compose up -d
+```
+
+## 🔐 Security Notes
+
+- Default credentials are for development only
+- Change passwords in production
+- Use HTTPS in production
+- Implement proper session management
+- Add rate limiting for production
+
+## 📝 Environment Variables
+
+Key variables in `docker-compose.yml`:
+- `POSTGRES_USER`: Database user
+- `POSTGRES_PASSWORD`: Database password  
+- `POSTGRES_DB`: Database name
+
+## 🤝 Contributing
+
+1. Create feature branch
+2. Make changes
+3. Test API endpoints
+4. Update documentation
+5. Submit pull request
+
+## 📞 Support
+
+- Check logs: `docker logs hris_backend-web-1`
+- Review documentation in `api-modules/hris_rest_api/`
+- Test API: Run `test-api.ps1` script
+
+---
+
+**Happy Coding! 🚀**
 - [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
 - [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
 - [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)

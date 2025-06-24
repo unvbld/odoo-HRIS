@@ -1,51 +1,57 @@
-### Health Check
-GET http://localhost:8069/api/health
+### HRIS REST API Test Collection
+### Use this file with VS Code REST Client extension
 
-### API Version
-GET http://localhost:8069/api/version
+@baseUrl = http://localhost:8069
+@username = apitest@test.com
+@password = test123
 
-###
+### 1. Health Check - Test API availability
+GET {{baseUrl}}/api/health
 
-### Login
-POST http://localhost:8069/api/auth/login
+### 2. Login - Get session token
+# @name login
+POST {{baseUrl}}/api/auth/login
 Content-Type: application/json
 
 {
-    "username": "admin",
-    "password": "admin"
+    "username": "{{username}}",
+    "password": "{{password}}"
 }
 
-### Get Profile (replace YOUR_SESSION_ID with actual session from login)
-GET http://localhost:8069/api/auth/profile
-Cookie: session_id=YOUR_SESSION_ID
+### 3. Extract session token from login response
+@sessionToken = {{login.response.body.data.session_token}}
 
-### Logout
-POST http://localhost:8069/api/auth/logout
-Cookie: session_id=YOUR_SESSION_ID
+### 4. Get Profile - Test authenticated endpoint
+GET {{baseUrl}}/api/auth/profile
+Cookie: session_id={{sessionToken}}
+
+### 5. Get Employees - Test employees endpoint
+GET {{baseUrl}}/api/employees?limit=10
+Cookie: session_id={{sessionToken}}
+
+### 6. Get Specific Employee
+GET {{baseUrl}}/api/employees/1
+Cookie: session_id={{sessionToken}}
+
+### 7. Get Departments
+GET {{baseUrl}}/api/departments
+Cookie: session_id={{sessionToken}}
+
+### 8. Logout - Clear session
+POST {{baseUrl}}/api/auth/logout
+Cookie: session_id={{sessionToken}}
 
 ###
-
-### Get Employees
-GET http://localhost:8069/api/employees?limit=10
-Cookie: session_id=YOUR_SESSION_ID
-
-### Get Specific Employee
-GET http://localhost:8069/api/employees/1
-Cookie: session_id=YOUR_SESSION_ID
-
-### Get Departments
-GET http://localhost:8069/api/departments
-Cookie: session_id=YOUR_SESSION_ID
-
+### LEAVE MANAGEMENT ENDPOINTS
 ###
 
 ### Get Leave Types
-GET http://localhost:8069/api/leave-types
-Cookie: session_id=YOUR_SESSION_ID
+GET {{baseUrl}}/api/leave-types
+Cookie: session_id={{sessionToken}}
 
 ### Get Leave Requests
-GET http://localhost:8069/api/leaves?limit=10
-Cookie: session_id=YOUR_SESSION_ID
+GET {{baseUrl}}/api/leaves?limit=10
+Cookie: session_id={{sessionToken}}
 
 ### Create Leave Request
 POST http://localhost:8069/api/leaves
