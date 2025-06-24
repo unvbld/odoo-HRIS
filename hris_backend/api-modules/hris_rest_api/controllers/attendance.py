@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from odoo import http
 from odoo.http import request
 
@@ -13,7 +13,7 @@ class AttendanceController(http.Controller):
         return {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
             'Access-Control-Max-Age': '86400',
         }
     
@@ -22,7 +22,8 @@ class AttendanceController(http.Controller):
         response_data = {
             'success': success,
             'message': message,
-            'data': data
+            'data': data,
+            'timestamp': datetime.now().isoformat()
         }
         
         response = request.make_response(
@@ -54,6 +55,8 @@ class AttendanceController(http.Controller):
             # Get request data
             data = json.loads(request.httprequest.data.decode('utf-8'))
             employee_id = data.get('employee_id')
+            location = data.get('location')
+            notes = data.get('notes', '')
             
             if not employee_id:
                 return self._error_response("Employee ID is required", 400)
@@ -63,26 +66,33 @@ class AttendanceController(http.Controller):
             if not employee.exists():
                 return self._error_response("Employee not found", 404)
             
-            # Check if already checked in
+            # Check if already checked in today
+            today = date.today()
             existing_attendance = request.env['hr.attendance'].search([
                 ('employee_id', '=', employee_id),
-                ('check_out', '=', False)
+                ('check_out', '=', False),
+                ('check_in', '>=', f'{today} 00:00:00'),
+                ('check_in', '<=', f'{today} 23:59:59')
             ], limit=1)
             
             if existing_attendance:
-                return self._error_response("Employee is already checked in", 400)
+                return self._error_response("Employee is already checked in today", 400)
             
             # Create check-in record
-            attendance = request.env['hr.attendance'].create({
+            attendance_vals = {
                 'employee_id': employee_id,
                 'check_in': datetime.now(),
-            })
+            }
+            
+            attendance = request.env['hr.attendance'].create(attendance_vals)
             
             return self._json_response(
                 data={
                     'id': attendance.id,
                     'employee_name': attendance.employee_id.name,
                     'check_in': attendance.check_in.strftime('%Y-%m-%d %H:%M:%S'),
+                    'location': location,
+                    'notes': notes,
                 },
                 message="Check-in successful"
             )
@@ -103,18 +113,23 @@ class AttendanceController(http.Controller):
             # Get request data
             data = json.loads(request.httprequest.data.decode('utf-8'))
             employee_id = data.get('employee_id')
+            location = data.get('location')
+            notes = data.get('notes', '')
             
             if not employee_id:
                 return self._error_response("Employee ID is required", 400)
             
-            # Find active check-in
+            # Find active check-in for today
+            today = date.today()
             attendance = request.env['hr.attendance'].search([
                 ('employee_id', '=', employee_id),
-                ('check_out', '=', False)
+                ('check_out', '=', False),
+                ('check_in', '>=', f'{today} 00:00:00'),
+                ('check_in', '<=', f'{today} 23:59:59')
             ], limit=1)
             
             if not attendance:
-                return self._error_response("No active check-in found", 400)
+                return self._error_response("No active check-in found for today", 400)
             
             # Update with check-out time
             attendance.write({
@@ -128,6 +143,8 @@ class AttendanceController(http.Controller):
                     'check_in': attendance.check_in.strftime('%Y-%m-%d %H:%M:%S'),
                     'check_out': attendance.check_out.strftime('%Y-%m-%d %H:%M:%S'),
                     'worked_hours': attendance.worked_hours,
+                    'location': location,
+                    'notes': notes,
                 },
                 message="Check-out successful"
             )
@@ -157,9 +174,9 @@ class AttendanceController(http.Controller):
             if employee_id:
                 domain.append(('employee_id', '=', int(employee_id)))
             if date_from:
-                domain.append(('check_in', '>=', date_from))
+                domain.append(('check_in', '>=', f'{date_from} 00:00:00'))
             if date_to:
-                domain.append(('check_in', '<=', date_to))
+                domain.append(('check_in', '<=', f'{date_to} 23:59:59'))
             
             # Get attendance records
             attendances = request.env['hr.attendance'].search(domain, limit=limit, offset=offset, order='check_in desc')
@@ -174,6 +191,7 @@ class AttendanceController(http.Controller):
                     'check_in': attendance.check_in.strftime('%Y-%m-%d %H:%M:%S'),
                     'check_out': attendance.check_out.strftime('%Y-%m-%d %H:%M:%S') if attendance.check_out else None,
                     'worked_hours': attendance.worked_hours,
+                    'date': attendance.check_in.strftime('%Y-%m-%d'),
                 })
             
             return self._json_response(
@@ -181,7 +199,8 @@ class AttendanceController(http.Controller):
                     'attendances': attendance_data,
                     'total_count': total_count,
                     'limit': limit,
-                    'offset': offset
+                    'offset': offset,
+                    'has_more': offset + limit < total_count
                 },
                 message="Attendance records retrieved successfully"
             )
@@ -189,3 +208,54 @@ class AttendanceController(http.Controller):
         except Exception as e:
             _logger.error(f"Attendance list error: {str(e)}")
             return self._error_response("Failed to retrieve attendance records", 500)
+    
+    @http.route('/api/attendance/status/<int:employee_id>', type='http', auth='user', methods=['GET', 'OPTIONS'], csrf=False)
+    def get_attendance_status(self, employee_id):
+        """Get current attendance status for employee"""
+        if request.httprequest.method == 'OPTIONS':
+            return request.make_response('', headers=self._cors_headers())
+        
+        try:
+            employee = request.env['hr.employee'].browse(employee_id)
+            if not employee.exists():
+                return self._error_response("Employee not found", 404)
+            
+            # Check today's attendance
+            today = date.today()
+            attendance = request.env['hr.attendance'].search([
+                ('employee_id', '=', employee_id),
+                ('check_in', '>=', f'{today} 00:00:00'),
+                ('check_in', '<=', f'{today} 23:59:59')
+            ], limit=1, order='check_in desc')
+            
+            if attendance:
+                status_data = {
+                    'employee_id': employee_id,
+                    'employee_name': employee.name,
+                    'is_checked_in': not attendance.check_out,
+                    'last_attendance_id': attendance.id,
+                    'check_in': attendance.check_in.strftime('%Y-%m-%d %H:%M:%S'),
+                    'check_out': attendance.check_out.strftime('%Y-%m-%d %H:%M:%S') if attendance.check_out else None,
+                    'worked_hours_today': attendance.worked_hours if attendance.check_out else 0,
+                    'status': 'checked_in' if not attendance.check_out else 'checked_out'
+                }
+            else:
+                status_data = {
+                    'employee_id': employee_id,
+                    'employee_name': employee.name,
+                    'is_checked_in': False,
+                    'last_attendance_id': None,
+                    'check_in': None,
+                    'check_out': None,
+                    'worked_hours_today': 0,
+                    'status': 'not_checked_in'
+                }
+            
+            return self._json_response(
+                data=status_data,
+                message="Attendance status retrieved successfully"
+            )
+            
+        except Exception as e:
+            _logger.error(f"Attendance status error: {str(e)}")
+            return self._error_response("Failed to retrieve attendance status", 500)

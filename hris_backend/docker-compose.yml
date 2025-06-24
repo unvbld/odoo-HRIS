@@ -9,11 +9,12 @@ services:
     depends_on:
       - db
     ports:
-      - "8069:8069" # Odoo accessible via http://localhost:8069
-    volumes:
+      - "8069:8069" # Odoo accessible via http://localhost:8069    volumes:
       - odoo-web-data:/var/lib/odoo
       # Pastikan folder custom-addons ini ada di direktori yang sama dengan docker-compose.yml Anda di host
       - ./custom-addons:/mnt/extra-addons
+      # API modules untuk REST API
+      - ./api-modules:/mnt/api-modules
       # - ./config:/etc/odoo # Anda bisa uncomment ini jika ingin mengelola odoo.conf dari host
     environment:
       - HOST=db
@@ -23,7 +24,8 @@ services:
       # Ini memberitahu Odoo di mana mencari modul.
       # /usr/lib/python3/dist-packages/odoo/addons adalah path default Odoo
       # /mnt/extra-addons adalah path tempat custom-addons di-mount di dalam kontainer
-      - ODOO_ADDONS_PATH=/usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons
+      # /mnt/api-modules adalah path tempat api-modules di-mount di dalam kontainer
+      - ODOO_ADDONS_PATH=/usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons,/mnt/api-modules
 
   db:
     image: postgres:15
