@@ -149,8 +149,7 @@ class AuthView extends GetView<AuthController> {
                       ),
                       
                       const SizedBox(height: 24),
-                      
-                      // Toggle Mode
+                        // Toggle Mode
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -175,6 +174,18 @@ class AuthView extends GetView<AuthController> {
                             ),
                           ),
                         ],
+                      ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // API Test Button
+                      TextButton.icon(
+                        onPressed: () => Get.toNamed('/api-test'),
+                        icon: const Icon(Icons.api, size: 16),
+                        label: const Text('Test API Connection'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.grey[600],
+                        ),
                       ),
                     ],
                   )),

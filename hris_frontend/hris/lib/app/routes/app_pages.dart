@@ -1,5 +1,7 @@
 import 'package:get/get.dart';
 
+import '../modules/api_test/bindings/api_test_binding.dart';
+import '../modules/api_test/views/api_test_view.dart';
 import '../modules/auth/bindings/auth_binding.dart';
 import '../modules/auth/views/auth_view.dart';
 import '../modules/home/bindings/home_binding.dart';
@@ -22,6 +24,11 @@ class AppPages {
       name: _Paths.HOME,
       page: () => const HomeView(),
       binding: HomeBinding(),
+    ),
+    GetPage(
+      name: _Paths.API_TEST,
+      page: () => const ApiTestView(),
+      binding: ApiTestBinding(),
     ),
   ];
 }
