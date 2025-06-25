@@ -203,15 +203,20 @@ class AuthView extends GetView<AuthController> {
       key: controller.loginFormKey,
       child: Column(
         children: [
-          // Email Field
+          // Email/Username Field
           TextFormField(
             controller: controller.emailController,
             keyboardType: TextInputType.emailAddress,
-            validator: controller.validateEmail,
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Username or email is required';
+              }
+              return null;
+            },
             decoration: InputDecoration(
-              labelText: 'Email',
-              hintText: 'Enter your email',
-              prefixIcon: const Icon(Icons.email_outlined),
+              labelText: 'Username or Email',
+              hintText: 'Enter your username or email',
+              prefixIcon: const Icon(Icons.account_circle_outlined),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -267,6 +272,30 @@ class AuthView extends GetView<AuthController> {
       key: controller.registerFormKey,
       child: Column(
         children: [
+          // Username Field
+          TextFormField(
+            controller: controller.usernameController,
+            keyboardType: TextInputType.text,
+            validator: controller.validateUsername,
+            decoration: InputDecoration(
+              labelText: 'Username',
+              hintText: 'Enter your username',
+              prefixIcon: const Icon(Icons.account_circle_outlined),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF667eea)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
           // Name Field
           TextFormField(
             controller: controller.nameController,

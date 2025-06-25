@@ -55,21 +55,51 @@ class AuthController(http.Controller):
         try:
             # Get request data
             data = json.loads(request.httprequest.data.decode('utf-8'))
-            username = data.get('username')
+            username = data.get('username') or data.get('email')  # Accept both username and email
             password = data.get('password')
             
             if not username or not password:
-                return self._error_response("Username and password are required", 400)
+                return self._error_response("Username/email and password are required", 400)
             
             # Simple authentication check
             try:
                 db_name = 'odoo'
-                uid = request.session.authenticate(db_name, username, password)
+                
+                # Try to find user by username or email
+                user_rec = None
+                if '@' in username:
+                    # Looks like email, try to find user by email first
+                    user_rec = request.env['res.users'].sudo().search([
+                        ('email', '=', username), ('active', '=', True)
+                    ], limit=1)
+                    if not user_rec:
+                        # If not found by email, try by login
+                        user_rec = request.env['res.users'].sudo().search([
+                            ('login', '=', username), ('active', '=', True)
+                        ], limit=1)
+                else:
+                    # Looks like username, try login first
+                    user_rec = request.env['res.users'].sudo().search([
+                        ('login', '=', username), ('active', '=', True)
+                    ], limit=1)
+                    if not user_rec:
+                        # If not found by login, try by email
+                        user_rec = request.env['res.users'].sudo().search([
+                            ('email', '=', username), ('active', '=', True)
+                        ], limit=1)
+                
+                # Use the actual login field for authentication
+                login_field = user_rec.login if user_rec else username
+                uid = request.session.authenticate(db_name, login_field, password)
                 
                 if uid:
+                    # Get user info
+                    actual_user = request.env['res.users'].sudo().browse(uid)
                     user_data = {
                         'user_id': uid,
-                        'username': username,
+                        'username': actual_user.login,
+                        'name': actual_user.name,
+                        'email': actual_user.email,
                         'session_token': request.session.sid,
                         'login_time': datetime.now().isoformat(),
                         'message': 'Authentication successful'
@@ -80,7 +110,7 @@ class AuthController(http.Controller):
                         message="Login successful"
                     )
                 else:
-                    return self._error_response("Invalid username or password", 401)
+                    return self._error_response("Invalid username/email or password", 401)
                     
             except Exception as e:
                 _logger.error(f"Authentication error: {str(e)}")
@@ -172,3 +202,120 @@ class AuthController(http.Controller):
         except Exception as e:
             _logger.error(f"Change password error: {str(e)}")
             return self._error_response("Failed to change password", 500)
+    
+    @http.route('/api/auth/register', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
+    def register(self):
+        """Register new user endpoint"""
+        if request.httprequest.method == 'OPTIONS':
+            return request.make_response('', headers=self._cors_headers())
+        
+        try:
+            # Get request data
+            data = json.loads(request.httprequest.data.decode('utf-8'))
+            username = data.get('username')
+            email = data.get('email')
+            password = data.get('password')
+            name = data.get('name')
+            confirm_password = data.get('confirm_password')
+            
+            # Validate required fields
+            if not all([username, email, password, name]):
+                return self._error_response("Username, email, password, and name are required", 400)
+            
+            # Validate password confirmation
+            if confirm_password and password != confirm_password:
+                return self._error_response("Password and confirm password do not match", 400)
+            
+            # Validate email format
+            import re
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, email):
+                return self._error_response("Invalid email format", 400)
+            
+            # Check if user already exists
+            existing_user_by_login = request.env['res.users'].sudo().search([('login', '=', username)], limit=1)
+            existing_user_by_email = request.env['res.users'].sudo().search([('email', '=', email)], limit=1)
+            
+            if existing_user_by_login:
+                return self._error_response("Username already exists", 409)
+            if existing_user_by_email:
+                return self._error_response("Email already exists", 409)
+            
+            # Create new user
+            try:
+                # First, let's check if there are any triggers creating employees automatically
+                # We'll try a different approach - disable hooks temporarily
+                
+                # Get basic user group and company first
+                user_group = request.env.ref('base.group_user')
+                main_company = request.env['res.company'].sudo().search([], limit=1)
+                
+                # Create partner first
+                partner_vals = {
+                    'name': name,
+                    'email': email,
+                    'is_company': False,
+                    'supplier_rank': 0,
+                    'customer_rank': 0,
+                }
+                partner = request.env['res.partner'].sudo().create(partner_vals)
+                
+                # Create user
+                user_vals = {
+                    'login': username,
+                    'password': password,
+                    'partner_id': partner.id,
+                    'company_id': main_company.id,
+                    'company_ids': [(6, 0, [main_company.id])],
+                    'active': True,
+                    'groups_id': [(6, 0, [user_group.id])],
+                }
+                
+                # Try to override the create method to prevent employee creation during user creation
+                old_employee_create = request.env['hr.employee'].__class__.create
+                
+                def no_auto_employee_create(self, vals_list):
+                    # Skip automatic employee creation during user registration
+                    if self.env.context.get('registering_user'):
+                        return self.browse()
+                    return old_employee_create(self, vals_list)
+                
+                # Monkey patch temporarily
+                request.env['hr.employee'].__class__.create = no_auto_employee_create
+                
+                try:
+                    # Create user with special context
+                    new_user = request.env['res.users'].sudo().with_context(
+                        registering_user=True,
+                        no_reset_password=True,
+                        mail_create_nosubscribe=True,
+                        mail_notrack=True,
+                        tracking_disable=True
+                    ).create(user_vals)
+                finally:
+                    # Restore original method
+                    request.env['hr.employee'].__class__.create = old_employee_create
+                
+                # Return success response  
+                user_data = {
+                    'user_id': new_user.id,
+                    'username': username,
+                    'name': name,
+                    'email': email,
+                    'created_at': datetime.now().isoformat(),
+                }
+                
+                return self._json_response(
+                    data=user_data,
+                    message="User registered successfully"
+                )
+                
+            except Exception as e:
+                _logger.error(f"User creation error: {str(e)}")
+                return self._error_response(f"Failed to create user: {str(e)}", 500)
+                
+        except json.JSONDecodeError:
+            return self._error_response("Invalid JSON data", 400)
+        except Exception as e:
+            _logger.error(f"Registration error: {str(e)}")
+            return self._error_response("Internal server error", 500)

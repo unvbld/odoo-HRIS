@@ -86,14 +86,16 @@ class AuthService extends GetxService {
   }
 
   // Register
-  Future<ApiResponse<User>> register(String name, String email, String password) async {
+  Future<ApiResponse<User>> register(String username, String name, String email, String password, String confirmPassword) async {
     _isLoading.value = true;
     
     try {
       final registerRequest = RegisterRequest(
+        username: username,
         name: name,
         email: email,
         password: password,
+        confirmPassword: confirmPassword,
       );
       final response = await _apiService.register(registerRequest);
       

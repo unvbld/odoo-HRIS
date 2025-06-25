@@ -80,14 +80,30 @@ class ApiService extends GetxService {
     }
   }
 
-  // Register (placeholder for future implementation)
+  // Register
   Future<ApiResponse<User>> register(RegisterRequest request) async {
     try {
-      // For now, return a placeholder response since the backend doesn't have register endpoint yet
-      return ApiResponse<User>(
-        success: false,
-        message: 'Register endpoint not implemented yet in backend',
+      final response = await _client.post(
+        Uri.parse('$baseUrl/auth/register'),
+        headers: _headers,
+        body: json.encode(request.toJson()),
       );
+
+      final data = json.decode(response.body);
+      
+      if (response.statusCode == 200 && data['success'] == true) {
+        final user = User.fromJson(data['data']);
+        return ApiResponse<User>(
+          success: true,
+          message: data['message'] ?? 'Registration successful',
+          data: user,
+        );
+      } else {
+        return ApiResponse<User>(
+          success: false,
+          message: data['message'] ?? 'Registration failed',
+        );
+      }
     } catch (e) {
       return ApiResponse<User>(
         success: false,

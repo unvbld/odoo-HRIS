@@ -48,22 +48,33 @@ class LoginRequest {
 }
 
 class RegisterRequest {
+  final String username;
   final String name;
   final String email;
   final String password;
+  final String? confirmPassword;
 
   RegisterRequest({
+    required this.username,
     required this.name,
     required this.email,
     required this.password,
+    this.confirmPassword,
   });
 
   Map<String, dynamic> toJson() {
-    return {
+    final data = {
+      'username': username,
       'name': name,
       'email': email,
       'password': password,
     };
+    
+    if (confirmPassword != null) {
+      data['confirm_password'] = confirmPassword!;
+    }
+    
+    return data;
   }
 }
 

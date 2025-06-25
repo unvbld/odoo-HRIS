@@ -7,6 +7,7 @@ class AuthController extends GetxController {
   final AuthService _authService = Get.find<AuthService>();
   
   // Form controllers
+  final usernameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final nameController = TextEditingController();
@@ -29,6 +30,7 @@ class AuthController extends GetxController {
 
   @override
   void onClose() {
+    usernameController.dispose();
     emailController.dispose();
     passwordController.dispose();
     nameController.dispose();
@@ -54,6 +56,7 @@ class AuthController extends GetxController {
 
   // Clear form
   void clearForm() {
+    usernameController.clear();
     emailController.clear();
     passwordController.clear();
     nameController.clear();
@@ -68,6 +71,20 @@ class AuthController extends GetxController {
     }
     if (!GetUtils.isEmail(value)) {
       return 'Please enter a valid email';
+    }
+    return null;
+  }
+
+  // Validate username
+  String? validateUsername(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Username is required';
+    }
+    if (value.length < 3) {
+      return 'Username must be at least 3 characters';
+    }
+    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
+      return 'Username can only contain letters, numbers, and underscores';
     }
     return null;
   }
@@ -154,9 +171,11 @@ class AuthController extends GetxController {
     
     try {
       final response = await _authService.register(
+        usernameController.text.trim(),
         nameController.text.trim(),
         emailController.text.trim(),
         passwordController.text,
+        confirmPasswordController.text,
       );
       
       if (response.success) {
