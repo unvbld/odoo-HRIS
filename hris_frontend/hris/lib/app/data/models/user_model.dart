@@ -2,12 +2,14 @@ class User {
   final int id;
   final String name;
   final String email;
+  final String? username;
   final String? sessionId;
 
   User({
     required this.id,
     required this.name,
     required this.email,
+    this.username,
     this.sessionId,
   });
 
@@ -15,7 +17,8 @@ class User {
     return User(
       id: json['user_id'] ?? json['id'] ?? 0,
       name: json['name'] ?? '',
-      email: json['login'] ?? json['email'] ?? '',
+      email: json['email'] ?? json['login'] ?? '',
+      username: json['username'] ?? json['login'],
       sessionId: json['session_token'] ?? json['session_id'],
     );
   }
@@ -25,6 +28,7 @@ class User {
       'id': id,
       'name': name,
       'email': email,
+      'username': username,
       'session_id': sessionId,
     };
   }

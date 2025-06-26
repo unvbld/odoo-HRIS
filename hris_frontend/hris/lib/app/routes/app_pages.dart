@@ -6,6 +6,9 @@ import '../modules/auth/bindings/auth_binding.dart';
 import '../modules/auth/views/auth_view.dart';
 import '../modules/home/bindings/home_binding.dart';
 import '../modules/home/views/home_view.dart';
+import '../modules/profile/views/profile_view.dart';
+import '../modules/attendance/views/attendance_view.dart';
+import '../modules/reports/views/reports_view.dart';
 
 part 'app_routes.dart';
 
@@ -29,6 +32,18 @@ class AppPages {
       name: _Paths.API_TEST,
       page: () => const ApiTestView(),
       binding: ApiTestBinding(),
+    ),
+    GetPage(
+      name: _Paths.PROFILE,
+      page: () => const ProfileView(),
+    ),
+    GetPage(
+      name: _Paths.ATTENDANCE,
+      page: () => const AttendanceView(),
+    ),
+    GetPage(
+      name: _Paths.REPORTS,
+      page: () => const ReportsView(),
     ),
   ];
 }

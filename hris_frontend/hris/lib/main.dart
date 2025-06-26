@@ -26,9 +26,17 @@ void main() async {
 }
 
 Future<void> initServices() async {
+  print('Initializing services...');
+  
   // Initialize API Service
   Get.put(ApiService(), permanent: true);
+  print('API Service initialized');
   
   // Initialize Auth Service
-  await Get.putAsync(() => AuthService().onInit().then((_) => AuthService()), permanent: true);
+  Get.put(AuthService(), permanent: true);
+  
+  // Initialize AuthService properly
+  final authService = Get.find<AuthService>();
+  await authService.onInit();
+  print('Auth Service initialized');
 }
