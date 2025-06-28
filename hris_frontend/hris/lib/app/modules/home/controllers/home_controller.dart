@@ -34,13 +34,42 @@ class HomeController extends GetxController {
     super.onInit();
     developer.log('HomeController onInit started', name: 'HomeController');
     
-    // Quick check without delay to avoid flash
-    _checkAuthAndInitialize();
+    // Wait for AuthService to be initialized before checking auth status
+    _waitForAuthAndInitialize();
+  }
+  
+  Future<void> _waitForAuthAndInitialize() async {
+    try {
+      developer.log('Waiting for AuthService to be initialized...', name: 'HomeController');
+      
+      // Wait for AuthService to be initialized (with timeout)
+      int retries = 0;
+      const maxRetries = 50; // 5 seconds max wait
+      const retryDelay = Duration(milliseconds: 100);
+      
+      while (!_authService.isInitialized && retries < maxRetries) {
+        await Future.delayed(retryDelay);
+        retries++;
+      }
+      
+      if (!_authService.isInitialized) {
+        developer.log('AuthService initialization timeout, proceeding anyway', name: 'HomeController');
+      } else {
+        developer.log('AuthService initialized successfully', name: 'HomeController');
+      }
+      
+      await _checkAuthAndInitialize();
+      
+    } catch (e) {
+      developer.log('Error waiting for auth initialization: $e', name: 'HomeController');
+      // Fallback to direct check
+      await _checkAuthAndInitialize();
+    }
   }
   
   Future<void> _checkAuthAndInitialize() async {
     try {
-      // Simple check without API validation to avoid delays
+      // Now safe to check authentication since AuthService is initialized
       final isAuthenticated = _authService.isLoggedIn;
       
       developer.log('Auth check - isAuthenticated: $isAuthenticated, currentUser: ${currentUser?.name}', name: 'HomeController');
@@ -57,6 +86,7 @@ class HomeController extends GetxController {
       
     } catch (e) {
       developer.log('Error in auth check: $e', name: 'HomeController');
+      // On error, redirect to auth for safety
       Get.offAllNamed('/auth');
     }
   }

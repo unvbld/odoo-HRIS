@@ -12,14 +12,10 @@ void main() async {
   // Initialize dependencies
   await initServices();
   
-  // Check if user is already logged in
-  final authService = Get.find<AuthService>();
-  final initialRoute = authService.isLoggedIn ? Routes.HOME : Routes.AUTH;
-  
   runApp(
     GetMaterialApp(
       title: "HRIS Application",
-      initialRoute: initialRoute,
+      initialRoute: Routes.AUTH, // Always start with AUTH, let AuthService handle routing
       getPages: AppPages.routes,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

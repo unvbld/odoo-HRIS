@@ -55,6 +55,16 @@ class HomeView extends GetView<HomeController> {
                               shape: BoxShape.circle,
                             ),
                           ),
+                          const SizedBox(width: 12),
+                          // Add logout button
+                          GestureDetector(
+                            onTap: controller.logout,
+                            child: const Icon(
+                              Icons.logout,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
                         ],
                       ),
                     ],

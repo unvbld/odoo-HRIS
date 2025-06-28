@@ -10,12 +10,14 @@ class AuthService extends GetxController {
   // Observable variables
   final Rx<User?> _currentUser = Rx<User?>(null);
   final RxBool _isLoading = false.obs;
+  final RxBool _isInitialized = false.obs; 
   final RxString _sessionToken = ''.obs;
   
   // Getters
   User? get currentUser => _currentUser.value;
   bool get isLoggedIn => _currentUser.value != null && _sessionToken.value.isNotEmpty;
   bool get isLoading => _isLoading.value;
+  bool get isInitialized => _isInitialized.value; // TAMBAH: Getter untuk initialized state
   String get sessionToken => _sessionToken.value;
   
   // Storage keys
@@ -30,7 +32,27 @@ class AuthService extends GetxController {
   
   /// Load initial data - called from main.dart
   Future<void> loadInitialData() async {
-    await _loadUserFromStorage();
+    print('🔄 AuthService: Starting to load initial data...');
+    
+    try {
+      await _loadUserFromStorage();
+      _isInitialized.value = true;
+      
+      print('✅ AuthService: Initial data loaded successfully');
+      print('📊 AuthService: isLoggedIn = ${isLoggedIn}, user = ${currentUser?.name}');
+      
+      // If user is logged in, optionally navigate to home
+      // But we let AuthController handle this to avoid double navigation
+      if (isLoggedIn) {
+        print('🏠 AuthService: User is logged in, ready for routing');
+      } else {
+        print('🔐 AuthService: User not logged in, auth required');
+      }
+      
+    } catch (e) {
+      print('❌ AuthService: Error loading initial data: $e');
+      _isInitialized.value = true; // Set true even on error so app doesn't hang
+    }
   }
   
   /// Load user data and session from local storage
@@ -38,25 +60,33 @@ class AuthService extends GetxController {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // Load session token
+      // Load session token first
       final sessionToken = prefs.getString(_sessionKey);
+      print('🔑 Loading session token: ${sessionToken?.substring(0, 10)}...');
+      
       if (sessionToken != null && sessionToken.isNotEmpty) {
         _sessionToken.value = sessionToken;
         
         // Load user data
         final userJson = prefs.getString(_userKey);
+        print('👤 Loading user data: ${userJson?.substring(0, 50)}...');
+        
         if (userJson != null && userJson.isNotEmpty) {
           final userData = json.decode(userJson);
           _currentUser.value = User.fromJson(userData);
           
-          print('User data loaded from storage: ${_currentUser.value?.name}');
-          // Don't validate session during initial load - let user use the app
-          // Only validate when making API calls
+          print('✅ User data loaded: ${_currentUser.value?.name}');
+        } else {
+          print('⚠️ No user data found, clearing session token');
+          _sessionToken.value = '';
         }
+      } else {
+        print('ℹ️ No session token found');
       }
     } catch (e) {
-      print('Error loading user from storage: $e');
-      // Don't clear session on error - just log it
+      print('❌ Error loading from storage: $e');
+      // Clear potentially corrupted data
+      await _clearSession();
     }
   }
   
@@ -122,6 +152,7 @@ class AuthService extends GetxController {
   
   /// Login with username/email and password
   Future<ApiResponse<User>> login(String username, String password) async {
+    print('🔐 AuthService: Starting login for: $username');
     _isLoading.value = true;
     
     try {
@@ -131,35 +162,40 @@ class AuthService extends GetxController {
       );
       
       final response = await _apiService.login(loginRequest);
+      print('📡 AuthService: Login API response - success: ${response.success}');
       
       if (response.success && response.data != null) {
         final user = response.data!;
         final sessionToken = user.sessionId ?? '';
         
+        print('👤 AuthService: Login successful - user: ${user.name}, session: ${sessionToken.substring(0, 10)}...');
+        
         if (sessionToken.isNotEmpty) {
           // Save session and user data
           await _saveUserToStorage(user, sessionToken);
           
-          print('Login successful for user: ${user.name}');
+          print('✅ AuthService: Login completed successfully for user: ${user.name}');
           return ApiResponse<User>(
             success: true,
             message: 'Login successful',
             data: user,
           );
         } else {
+          print('❌ AuthService: No session token received');
           return ApiResponse<User>(
             success: false,
             message: 'No session token received',
           );
         }
       } else {
+        print('❌ AuthService: Login failed - ${response.message}');
         return ApiResponse<User>(
           success: false,
           message: response.message,
         );
       }
     } catch (e) {
-      print('Login error: $e');
+      print('❌ AuthService: Login error: $e');
       return ApiResponse<User>(
         success: false,
         message: 'Login failed: ${e.toString()}',

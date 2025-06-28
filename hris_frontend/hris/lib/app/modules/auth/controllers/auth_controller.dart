@@ -29,6 +29,40 @@ class AuthController extends GetxController {
   User? get currentUser => _authService.currentUser;
 
   @override
+  void onInit() {
+    super.onInit();
+    // Check if user is already logged in after AuthService is initialized
+    _checkInitialAuthState();
+  }
+  
+  Future<void> _checkInitialAuthState() async {
+    try {
+      // Wait for AuthService to be initialized
+      int retries = 0;
+      const maxRetries = 50; // 5 seconds max wait
+      const retryDelay = Duration(milliseconds: 100);
+      
+      while (!_authService.isInitialized && retries < maxRetries) {
+        await Future.delayed(retryDelay);
+        retries++;
+      }
+      
+      // Check if user is already logged in
+      if (_authService.isLoggedIn) {
+        print('✅ User already logged in, redirecting to home');
+        // Small delay to ensure UI is ready
+        await Future.delayed(Duration(milliseconds: 300));
+        Get.offAllNamed('/home');
+      } else {
+        print('ℹ️ User not logged in, staying on auth page');
+      }
+    } catch (e) {
+      print('❌ Error checking initial auth state: $e');
+      // Stay on auth page if error
+    }
+  }
+
+  @override
   void onClose() {
     usernameController.dispose();
     emailController.dispose();
