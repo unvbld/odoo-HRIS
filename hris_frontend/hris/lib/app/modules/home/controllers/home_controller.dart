@@ -34,16 +34,14 @@ class HomeController extends GetxController {
     super.onInit();
     developer.log('HomeController onInit started', name: 'HomeController');
     
-    // Much longer delay to ensure auth service is fully initialized and session saved
-    Future.delayed(Duration(milliseconds: 1000), () {
-      _checkAuthAndInitialize();
-    });
+    // Quick check without delay to avoid flash
+    _checkAuthAndInitialize();
   }
   
   Future<void> _checkAuthAndInitialize() async {
     try {
-      // Check if user is authenticated
-      final isAuthenticated = await _authService.isAuthenticated();
+      // Simple check without API validation to avoid delays
+      final isAuthenticated = _authService.isLoggedIn;
       
       developer.log('Auth check - isAuthenticated: $isAuthenticated, currentUser: ${currentUser?.name}', name: 'HomeController');
       
@@ -53,11 +51,23 @@ class HomeController extends GetxController {
         return;
       }
       
-      // If we have valid session, initialize the home screen
+      // User is authenticated, proceed with initialization
+      developer.log('User authenticated, initializing dashboard', name: 'HomeController');
+      await _initializeDashboard();
+      
+    } catch (e) {
+      developer.log('Error in auth check: $e', name: 'HomeController');
+      Get.offAllNamed('/auth');
+    }
+  }
+  
+  Future<void> _initializeDashboard() async {
+    try {
+      // Initialize user data
       _initializeUserData();
       _updateCurrentTime();
       
-      // Start time updater first, then load dashboard data
+      // Start time updater
       _startTimeUpdater();
       
       // Load dashboard data after a short delay
@@ -66,11 +76,7 @@ class HomeController extends GetxController {
       });
       
     } catch (e) {
-      developer.log('Error during auth check: $e', name: 'HomeController');
-      // Don't immediately redirect on error, give it another chance
-      Future.delayed(Duration(seconds: 2), () {
-        Get.offAllNamed('/auth');
-      });
+      developer.log('Error during dashboard initialization: $e', name: 'HomeController');
     }
   }
   

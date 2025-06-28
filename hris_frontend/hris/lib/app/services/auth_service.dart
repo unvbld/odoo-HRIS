@@ -287,10 +287,17 @@ class AuthService extends GetxController {
   }
   
   /// Check if user is authenticated
+  /// Check if user is authenticated - simple check without API call
   Future<bool> isAuthenticated() async {
+    // Simple check: user data exists and session token is present
+    return isLoggedIn; // This checks both currentUser != null && sessionToken.isNotEmpty
+  }
+  
+  /// Check if user is authenticated with server validation
+  Future<bool> isAuthenticatedWithValidation() async {
     if (!isLoggedIn) return false;
     
-    // Validate session
+    // Validate session with server
     return await _validateSession();
   }
   

@@ -1,22 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/auth_controller.dart';
-import '../../../services/auth_service.dart';
 
 class AuthView extends GetView<AuthController> {
   const AuthView({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Check if user is already logged in
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final authService = Get.find<AuthService>();
-      if (authService.isLoggedIn) {
-        // User is already logged in, redirect to home
-        Get.offAllNamed('/home');
-      }
-    });
-
+    // Don't auto-redirect here to avoid infinite loops
+    // Let the user manually login or logout properly
+    
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(

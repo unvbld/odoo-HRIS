@@ -40,12 +40,24 @@ class ApiService extends GetxService {
       final data = json.decode(response.body);
       
       if (response.statusCode == 200 && data['success'] == true) {
-        final parsedData = parser(data['data']);
-        return ApiResponse<T>(
-          success: true,
-          message: data['message'] ?? 'Request successful',
-          data: parsedData,
-        );
+        // Handle case where data['data'] might be null (e.g., logout response)
+        final rawData = data['data'];
+        
+        if (rawData != null) {
+          final parsedData = parser(rawData);
+          return ApiResponse<T>(
+            success: true,
+            message: data['message'] ?? 'Request successful',
+            data: parsedData,
+          );
+        } else {
+          // For responses without data (like logout), return success without parsed data
+          return ApiResponse<T>(
+            success: true,
+            message: data['message'] ?? 'Request successful',
+            data: null,
+          );
+        }
       } else {
         return ApiResponse<T>(
           success: false,
@@ -134,16 +146,61 @@ class ApiService extends GetxService {
 
   // Logout (with session)
   Future<ApiResponse<String>> logout(String sessionId) async {
-    return _handleRequest<String>(
-      () => _client.post(
+    try {
+      final response = await _client.post(
         Uri.parse('$baseUrl/auth/logout'),
         headers: {
           ..._headers,
           'Authorization': 'Bearer $sessionId',
         },
-      ),
-      (data) => data['message'] ?? 'Logout successful',
-    );
+      ).timeout(timeoutDuration);
+      
+      if (response.body.isEmpty) {
+        return ApiResponse<String>(
+          success: false,
+          message: 'Server returned empty response',
+        );
+      }
+
+      final data = json.decode(response.body);
+      
+      if (response.statusCode == 200 && data['success'] == true) {
+        return ApiResponse<String>(
+          success: true,
+          message: data['message'] ?? 'Logout successful',
+          data: data['message'] ?? 'Logout successful',
+        );
+      } else {
+        return ApiResponse<String>(
+          success: false,
+          message: data['message'] ?? 'Logout failed',
+        );
+      }
+    } on SocketException {
+      developer.log('Network connection error during logout', name: 'ApiService');
+      return ApiResponse<String>(
+        success: false,
+        message: 'No internet connection. Please check your network.',
+      );
+    } on HttpException {
+      developer.log('HTTP error during logout', name: 'ApiService');
+      return ApiResponse<String>(
+        success: false,
+        message: 'Server error occurred. Please try again later.',
+      );
+    } on FormatException {
+      developer.log('Invalid response format during logout', name: 'ApiService');
+      return ApiResponse<String>(
+        success: false,
+        message: 'Invalid response from server.',
+      );
+    } catch (e) {
+      developer.log('Unexpected error during logout: $e', name: 'ApiService');
+      return ApiResponse<String>(
+        success: false,
+        message: 'An unexpected error occurred: ${e.toString()}',
+      );
+    }
   }
 
   // Get Profile (with session)
