@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/models/user_model.dart';
 import '../data/providers/api_service.dart';
+import '../config/app_constants.dart';
 
 class AuthService extends GetxController {
   final ApiService _apiService = Get.find<ApiService>();
@@ -21,8 +22,8 @@ class AuthService extends GetxController {
   String get sessionToken => _sessionToken.value;
   
   // Storage keys
-  static const String _userKey = 'user_data';
-  static const String _sessionKey = 'session_token';
+  static const String _userKey = AppConstants.userDataKey;
+  static const String _sessionKey = AppConstants.sessionTokenKey;
   
   @override
   void onInit() {

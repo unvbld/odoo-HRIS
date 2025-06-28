@@ -5,10 +5,11 @@ import 'package:get/get.dart';
 import 'dart:developer' as developer;
 import '../models/user_model.dart';
 import '../models/attendance_model.dart';
+import '../../config/app_constants.dart';
 
 class ApiService extends GetxService {
-  static const String baseUrl = 'http://localhost:8069/api';
-  static const Duration timeoutDuration = Duration(seconds: 30);
+  static const String baseUrl = '${AppConstants.baseUrl}${AppConstants.apiPrefix}';
+  static const Duration timeoutDuration = Duration(milliseconds: AppConstants.connectTimeout);
   
   final http.Client _client = http.Client();
 
@@ -124,7 +125,7 @@ class ApiService extends GetxService {
   Future<ApiResponse<User>> login(LoginRequest request) async {
     return _handleRequest<User>(
       () => _client.post(
-        Uri.parse('$baseUrl/auth/login'),
+        Uri.parse('$baseUrl${AppConstants.loginEndpoint}'),
         headers: _headers,
         body: json.encode(request.toJson()),
       ),
@@ -136,7 +137,7 @@ class ApiService extends GetxService {
   Future<ApiResponse<User>> register(RegisterRequest request) async {
     return _handleRequest<User>(
       () => _client.post(
-        Uri.parse('$baseUrl/auth/register'),
+        Uri.parse('$baseUrl${AppConstants.registerEndpoint}'),
         headers: _headers,
         body: json.encode(request.toJson()),
       ),
@@ -148,7 +149,7 @@ class ApiService extends GetxService {
   Future<ApiResponse<String>> logout(String sessionId) async {
     try {
       final response = await _client.post(
-        Uri.parse('$baseUrl/auth/logout'),
+        Uri.parse('$baseUrl${AppConstants.logoutEndpoint}'),
         headers: {
           ..._headers,
           'Authorization': 'Bearer $sessionId',
@@ -207,7 +208,7 @@ class ApiService extends GetxService {
   Future<ApiResponse<User>> getProfile(String sessionId) async {
     return _handleRequest<User>(
       () => _client.get(
-        Uri.parse('$baseUrl/auth/profile'),
+        Uri.parse('$baseUrl${AppConstants.profileEndpoint}'),
         headers: {
           ..._headers,
           'Authorization': 'Bearer $sessionId',
@@ -221,7 +222,7 @@ class ApiService extends GetxService {
   Future<ApiResponse<AttendanceDashboard>> getAttendanceDashboard(String sessionToken) async {
     return _handleRequest<AttendanceDashboard>(
       () => _client.get(
-        Uri.parse('$baseUrl/attendance/dashboard'),
+        Uri.parse('$baseUrl${AppConstants.attendanceDashboardEndpoint}'),
         headers: {
           ..._headers,
           'Authorization': 'Bearer $sessionToken',

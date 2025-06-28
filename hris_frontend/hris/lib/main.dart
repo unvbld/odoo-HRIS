@@ -5,6 +5,7 @@ import 'dart:developer' as developer;
 import 'app/routes/app_pages.dart';
 import 'app/data/providers/api_service.dart';
 import 'app/services/auth_service.dart';
+import 'app/config/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,10 +19,7 @@ void main() async {
       initialRoute: Routes.AUTH, // Always start with AUTH, let AuthService handle routing
       getPages: AppPages.routes,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
+      theme: AppTheme.lightTheme, // Use centralized theme
     ),
   );
 }
