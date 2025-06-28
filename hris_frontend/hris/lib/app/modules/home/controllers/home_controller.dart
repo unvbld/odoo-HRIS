@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 import '../../../services/auth_service.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/providers/api_service.dart';
+import '../../../utils/time_utils.dart';
 
 class HomeController extends GetxController {
   final AuthService _authService = Get.find<AuthService>();
@@ -201,10 +202,8 @@ class HomeController extends GetxController {
 
   void _updateCurrentTime() {
     final now = DateTime.now();
-    final hour12 = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
-    final amPm = now.hour >= 12 ? 'PM' : 'AM';
-    currentTime.value = '${hour12.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')} $amPm';
-    currentDate.value = '${_getMonthName(now.month)} ${now.day}, ${now.year}';
+    currentTime.value = TimeUtils.formatTime12Hour(now);
+    currentDate.value = TimeUtils.formatDate(now);
   }
   
   void _startTimeUpdater() {
@@ -214,14 +213,6 @@ class HomeController extends GetxController {
         _startTimeUpdater();
       }
     });
-  }
-
-  String _getMonthName(int month) {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return months[month - 1];
   }
 
   // Check In/Out functionality

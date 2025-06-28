@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime, date, timedelta, time
+import pytz
 from odoo import http
 from odoo.http import request
 import calendar
@@ -8,6 +9,28 @@ import calendar
 _logger = logging.getLogger(__name__)
 
 class AttendanceController(http.Controller):
+    
+    def _format_time_local(self, dt):
+        """Format datetime to local timezone (WIB/Indonesia)"""
+        if not dt:
+            return ''
+        
+        # Convert to Indonesia timezone (WIB = UTC+7)
+        indonesia_tz = pytz.timezone('Asia/Jakarta')
+        
+        # If dt is naive (no timezone), assume it's already in local time
+        if dt.tzinfo is None:
+            local_dt = indonesia_tz.localize(dt)
+        else:
+            local_dt = dt.astimezone(indonesia_tz)
+        
+        # Format as HH:MM AM/PM
+        return local_dt.strftime('%I:%M %p')
+    
+    def _get_current_datetime_local(self):
+        """Get current datetime in local timezone"""
+        indonesia_tz = pytz.timezone('Asia/Jakarta')
+        return datetime.now(indonesia_tz)
     
     def _cors_headers(self):
         """Return CORS headers for API responses"""
@@ -137,16 +160,29 @@ class AttendanceController(http.Controller):
             
             # Calculate current status
             is_checked_in = bool(today_attendance and not today_attendance.check_out)
-            check_in_time = today_attendance.check_in.strftime('%I:%M %p') if today_attendance and today_attendance.check_in else ''
-            check_out_time = today_attendance.check_out.strftime('%I:%M %p') if today_attendance and today_attendance.check_out else ''
+            check_in_time = self._format_time_local(today_attendance.check_in) if today_attendance and today_attendance.check_in else ''
+            check_out_time = self._format_time_local(today_attendance.check_out) if today_attendance and today_attendance.check_out else ''
             
             # Calculate working hours
             working_hours = '00:00:00'
             if today_attendance and today_attendance.check_in:
                 if today_attendance.check_out:
-                    # Calculate actual working hours
+                    # Calculate actual working hours using local times
                     check_in = today_attendance.check_in
                     check_out = today_attendance.check_out
+                    
+                    # Convert to local timezone if needed
+                    indonesia_tz = pytz.timezone('Asia/Jakarta')
+                    if check_in.tzinfo is None:
+                        check_in = indonesia_tz.localize(check_in)
+                    else:
+                        check_in = check_in.astimezone(indonesia_tz)
+                        
+                    if check_out.tzinfo is None:
+                        check_out = indonesia_tz.localize(check_out)
+                    else:
+                        check_out = check_out.astimezone(indonesia_tz)
+                    
                     duration = check_out - check_in
                     hours = int(duration.total_seconds() // 3600)
                     minutes = int((duration.total_seconds() % 3600) // 60)
@@ -155,7 +191,15 @@ class AttendanceController(http.Controller):
                 else:
                     # Calculate current working hours (still checked in)
                     check_in = today_attendance.check_in
-                    now = datetime.now()
+                    now = self._get_current_datetime_local()
+                    
+                    # Convert check_in to local timezone if needed
+                    indonesia_tz = pytz.timezone('Asia/Jakarta')
+                    if check_in.tzinfo is None:
+                        check_in = indonesia_tz.localize(check_in)
+                    else:
+                        check_in = check_in.astimezone(indonesia_tz)
+                    
                     duration = now - check_in
                     hours = int(duration.total_seconds() // 3600)
                     minutes = int((duration.total_seconds() % 3600) // 60)
@@ -245,19 +289,29 @@ class AttendanceController(http.Controller):
             
             if existing_attendance:
                 # Check out
-                check_out_time = datetime.now()
+                check_out_time = self._get_current_datetime_local()
+                # Convert to UTC for storage
+                check_out_utc = check_out_time.astimezone(pytz.UTC).replace(tzinfo=None)
                 existing_attendance.sudo().write({
-                    'check_out': check_out_time
+                    'check_out': check_out_utc
                 })
                 
-                # Calculate working hours
-                duration = check_out_time - existing_attendance.check_in
+                # Calculate working hours using local times
+                check_in_local = existing_attendance.check_in
+                if check_in_local.tzinfo is None:
+                    # Assume stored time is in local timezone
+                    indonesia_tz = pytz.timezone('Asia/Jakarta')
+                    check_in_local = indonesia_tz.localize(check_in_local)
+                else:
+                    check_in_local = check_in_local.astimezone(pytz.timezone('Asia/Jakarta'))
+                
+                duration = check_out_time - check_in_local
                 hours = int(duration.total_seconds() // 3600)
                 minutes = int((duration.total_seconds() % 3600) // 60)
                 seconds = int(duration.total_seconds() % 60)
                 working_hours = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
                 
-                check_out_formatted = check_out_time.strftime('%I:%M %p')
+                check_out_formatted = self._format_time_local(check_out_time)
                 
                 return self._json_response({
                     'action': 'check_out',
@@ -268,18 +322,22 @@ class AttendanceController(http.Controller):
                 }, message="Check out successful")
             else:
                 # Check in
+                check_in_time = self._get_current_datetime_local()
+                # Convert to UTC for storage
+                check_in_utc = check_in_time.astimezone(pytz.UTC).replace(tzinfo=None)
+                
                 attendance = request.env['hr.attendance'].sudo().create({
                     'employee_id': employee.id,
-                    'check_in': datetime.now(),
+                    'check_in': check_in_utc,
                 })
                 
-                check_in_time = attendance.check_in.strftime('%I:%M %p')
+                check_in_formatted = self._format_time_local(check_in_time)
                 
                 return self._json_response({
                     'action': 'check_in',
-                    'check_in_time': check_in_time,
+                    'check_in_time': check_in_formatted,
                     'is_checked_in': True,
-                    'message': f'Successfully checked in at {check_in_time}'
+                    'message': f'Successfully checked in at {check_in_formatted}'
                 }, message="Check in successful")
                 
         except Exception as e:
