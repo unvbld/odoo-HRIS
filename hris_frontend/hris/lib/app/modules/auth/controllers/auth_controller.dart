@@ -141,6 +141,9 @@ class AuthController extends GetxController {
           colorText: Colors.white,
         );
         
+        // Longer delay to ensure session is properly saved
+        await Future.delayed(Duration(milliseconds: 500));
+        
         // Navigate to home or dashboard
         Get.offAllNamed('/home');
       } else {
@@ -156,7 +159,7 @@ class AuthController extends GetxController {
       errorMessage.value = 'An unexpected error occurred';
       Get.snackbar(
         'Error',
-        'An unexpected error occurred',
+        'An unexpected error occurred: ${e.toString()}',
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );

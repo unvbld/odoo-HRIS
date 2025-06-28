@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'dart:developer' as developer;
 import '../../../services/auth_service.dart';
 import '../../../data/models/user_model.dart';
+import '../../../data/providers/api_service.dart';
 
 class HomeController extends GetxController {
   final AuthService _authService = Get.find<AuthService>();
+  final ApiService _apiService = Get.find<ApiService>();
   
   // Observable variables
   final RxString currentTime = ''.obs;
@@ -16,45 +19,167 @@ class HomeController extends GetxController {
   final RxInt selectedBottomIndex = 0.obs;
   final RxString userName = 'User'.obs;
   final RxString userLocation = 'Your Office Location'.obs;
+  final RxBool isLoading = false.obs;
   
   // Attendance data
-  final RxInt presentDays = 13.obs;
-  final RxInt absentDays = 2.obs;
-  final RxInt lateDays = 4.obs;
+  final RxInt presentDays = 0.obs;
+  final RxInt absentDays = 0.obs;
+  final RxInt lateDays = 0.obs;
   
   // Getters
   User? get currentUser => _authService.currentUser;
-  
+
   @override
   void onInit() {
     super.onInit();
-    _initializeUserData();
-    _updateCurrentTime();
-    _loadAttendanceData();
+    developer.log('HomeController onInit started', name: 'HomeController');
     
-    // Update time every second
-    _startTimeUpdater();
+    // Much longer delay to ensure auth service is fully initialized and session saved
+    Future.delayed(Duration(milliseconds: 1000), () {
+      _checkAuthAndInitialize();
+    });
+  }
+  
+  Future<void> _checkAuthAndInitialize() async {
+    try {
+      // Check if user is authenticated
+      final isAuthenticated = await _authService.isAuthenticated();
+      
+      developer.log('Auth check - isAuthenticated: $isAuthenticated, currentUser: ${currentUser?.name}', name: 'HomeController');
+      
+      if (!isAuthenticated) {
+        developer.log('Not authenticated, redirecting to auth', name: 'HomeController');
+        Get.offAllNamed('/auth');
+        return;
+      }
+      
+      // If we have valid session, initialize the home screen
+      _initializeUserData();
+      _updateCurrentTime();
+      
+      // Start time updater first, then load dashboard data
+      _startTimeUpdater();
+      
+      // Load dashboard data after a short delay
+      Future.delayed(Duration(milliseconds: 300), () {
+        _loadDashboardData();
+      });
+      
+    } catch (e) {
+      developer.log('Error during auth check: $e', name: 'HomeController');
+      // Don't immediately redirect on error, give it another chance
+      Future.delayed(Duration(seconds: 2), () {
+        Get.offAllNamed('/auth');
+      });
+    }
   }
   
   void _initializeUserData() {
-    // Initialize user-specific data
-    userName.value = currentUser?.name ?? 'User';
-    userLocation.value = 'Your Office Location'; // This could be fetched from user preferences or API
+    // Use the current user from AuthService
+    final currentUserName = currentUser?.name ?? 'User';
+    
+    userName.value = currentUserName;
+    userLocation.value = 'Your Office Location';
+    
+    developer.log('Initialized user data. User: $currentUserName', name: 'HomeController');
   }
-  
+
+  Future<void> _loadDashboardData() async {
+    if (isLoading.value) return; // Prevent multiple concurrent calls
+    
+    try {
+      isLoading.value = true;
+      
+      // Check if we have valid session
+      if (!_authService.isLoggedIn || _authService.sessionToken.isEmpty) {
+        developer.log('No valid session found during dashboard load', name: 'HomeController');
+        Get.snackbar(
+          'Authentication Error', 
+          'Please try logging in again',
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+        );
+        return;
+      }
+
+      final sessionToken = _authService.sessionToken;
+      developer.log('Loading dashboard data with session: ${sessionToken.substring(0, 10)}...', name: 'HomeController');
+      final response = await _apiService.getAttendanceDashboard(sessionToken);
+      
+      if (response.success && response.data != null) {
+        final dashboard = response.data!;
+        
+        // Keep the original user name, don't override with dashboard data
+        // because dashboard might return admin user data
+        if (userName.value == 'User') {
+          userName.value = 'zefa'; // Set default name if still User
+        }
+        
+        userLocation.value = dashboard.userInfo.location.isNotEmpty 
+            ? dashboard.userInfo.location 
+            : 'Office Location';
+        
+        // Update current status
+        isCheckedIn.value = dashboard.currentStatus.isCheckedIn;
+        checkInTime.value = dashboard.currentStatus.checkInTime;
+        checkOutTime.value = dashboard.currentStatus.checkOutTime;
+        workingHours.value = dashboard.currentStatus.workingHours;
+        
+        // Update monthly summary
+        presentDays.value = dashboard.monthlySummary.presentDays;
+        absentDays.value = dashboard.monthlySummary.absentDays;
+        lateDays.value = dashboard.monthlySummary.lateDays;
+        
+        developer.log('Dashboard data loaded successfully. User: ${userName.value}', name: 'HomeController');
+      } else {
+        developer.log('Failed to load dashboard data: ${response.message}', name: 'HomeController');
+        
+        // Only redirect to login for authentication errors, not other errors
+        if (response.message.toLowerCase().contains('authentication required') || 
+            response.message.toLowerCase().contains('unauthorized')) {
+          developer.log('Authentication error detected, redirecting to login', name: 'HomeController');
+          await _authService.logout();
+          Get.offAllNamed('/auth');
+        } else {
+          // For other errors, just show message but don't redirect
+          Get.snackbar(
+            'Error', 
+            response.message,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+          );
+        }
+      }
+    } catch (e) {
+      developer.log('Exception while loading dashboard data: $e', name: 'HomeController');
+      Get.snackbar(
+        'Network Error', 
+        'Failed to load dashboard data. Please check your connection.',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   void _updateCurrentTime() {
     final now = DateTime.now();
-    currentTime.value = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')} ${now.hour >= 12 ? 'PM' : 'AM'}';
+    final hour12 = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final amPm = now.hour >= 12 ? 'PM' : 'AM';
+    currentTime.value = '${hour12.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')} $amPm';
     currentDate.value = '${_getMonthName(now.month)} ${now.day}, ${now.year}';
   }
   
   void _startTimeUpdater() {
     Future.delayed(const Duration(seconds: 1), () {
-      _updateCurrentTime();
-      _startTimeUpdater();
+      if (!isClosed) {
+        _updateCurrentTime();
+        _startTimeUpdater();
+      }
     });
   }
-  
+
   String _getMonthName(int month) {
     const months = [
       'January', 'February', 'March', 'April', 'May', 'June',
@@ -62,55 +187,87 @@ class HomeController extends GetxController {
     ];
     return months[month - 1];
   }
-  
-  void _loadAttendanceData() {
-    // Load attendance data from storage or API
-    // For now, using mock data
-    checkInTime.value = '10:00 AM';
-    checkOutTime.value = '06:30 PM';
-    workingHours.value = '08:30:00';
-  }
-  
+
   // Check In/Out functionality
-  void toggleCheckInOut() {
-    if (isCheckedIn.value) {
-      _checkOut();
-    } else {
-      _checkIn();
+  Future<void> toggleCheckInOut() async {
+    if (isLoading.value) return; // Prevent multiple concurrent calls
+    
+    try {
+      isLoading.value = true;
+      
+      if (!_authService.isLoggedIn || _authService.sessionToken.isEmpty) {
+        developer.log('No valid session found during check-in/out', name: 'HomeController');
+        Get.snackbar(
+          'Authentication Required', 
+          'Please login again',
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+        );
+        Get.offAllNamed('/auth');
+        return;
+      }
+
+      final sessionToken = _authService.sessionToken;
+      final response = await _apiService.toggleCheckInOut(sessionToken);
+      
+      if (response.success && response.data != null) {
+        final result = response.data!;
+        
+        // Update UI based on the response
+        isCheckedIn.value = result.isCheckedIn;
+        
+        if (result.action == 'check_in') {
+          checkInTime.value = result.checkInTime ?? '';
+          developer.log('Check-in successful at ${result.checkInTime}', name: 'HomeController');
+          Get.snackbar(
+            'Check In Successful',
+            result.message,
+            backgroundColor: Colors.green,
+            colorText: Colors.white,
+            icon: const Icon(Icons.check_circle, color: Colors.white),
+          );
+        } else {
+          checkOutTime.value = result.checkOutTime ?? '';
+          workingHours.value = result.workingHours ?? '00:00:00';
+          developer.log('Check-out successful at ${result.checkOutTime}', name: 'HomeController');
+          Get.snackbar(
+            'Check Out Successful',
+            result.message,
+            backgroundColor: Colors.orange,
+            colorText: Colors.white,
+            icon: const Icon(Icons.logout, color: Colors.white),
+          );
+        }
+        
+        // Refresh dashboard data to get updated stats
+        await _loadDashboardData();
+      } else {
+        developer.log('Check-in/out failed: ${response.message}', name: 'HomeController');
+        Get.snackbar(
+          'Error', 
+          response.message,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      }
+    } catch (e) {
+      developer.log('Exception during check-in/out: $e', name: 'HomeController');
+      Get.snackbar(
+        'Network Error', 
+        'Failed to process check-in/out. Please try again.',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
     }
   }
-  
-  void _checkIn() {
-    final now = DateTime.now();
-    checkInTime.value = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ${now.hour >= 12 ? 'PM' : 'AM'}';
-    isCheckedIn.value = true;
-    
-    Get.snackbar(
-      'Check In',
-      'You have successfully checked in at ${checkInTime.value}',
-      backgroundColor: Colors.green,
-      colorText: Colors.white,
-      icon: const Icon(Icons.check_circle, color: Colors.white),
-    );
+
+  // Refresh dashboard data
+  Future<void> refreshDashboard() async {
+    await _loadDashboardData();
   }
-  
-  void _checkOut() {
-    final now = DateTime.now();
-    checkOutTime.value = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ${now.hour >= 12 ? 'PM' : 'AM'}';
-    isCheckedIn.value = false;
-    
-    // Calculate working hours (mock calculation)
-    workingHours.value = '08:30:00';
-    
-    Get.snackbar(
-      'Check Out',
-      'You have successfully checked out at ${checkOutTime.value}',
-      backgroundColor: Colors.orange,
-      colorText: Colors.white,
-      icon: const Icon(Icons.logout, color: Colors.white),
-    );
-  }
-  
+
   // Bottom navigation
   void onBottomNavTap(int index) {
     selectedBottomIndex.value = index;
@@ -133,7 +290,7 @@ class HomeController extends GetxController {
         break;
     }
   }
-  
+
   // Request actions
   void onRequestTap() {
     Get.bottomSheet(
@@ -187,7 +344,7 @@ class HomeController extends GetxController {
       ),
     );
   }
-  
+
   Widget _buildRequestOption({
     required IconData icon,
     required String title,
@@ -199,7 +356,7 @@ class HomeController extends GetxController {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: const Color(0xFF667eea).withOpacity(0.1),
+          color: const Color(0xFF667eea).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(icon, color: const Color(0xFF667eea)),
@@ -209,19 +366,28 @@ class HomeController extends GetxController {
       onTap: onTap,
     );
   }
-  
+
   // Logout
   Future<void> logout() async {
     try {
+      developer.log('Logout initiated', name: 'HomeController');
       await _authService.logout();
+      developer.log('Logout successful', name: 'HomeController');
       Get.offAllNamed('/auth');
     } catch (e) {
+      developer.log('Logout failed: $e', name: 'HomeController');
       Get.snackbar(
-        'Error',
-        'Failed to logout',
+        'Logout Error',
+        'Failed to logout properly. Please try again.',
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
     }
+  }
+
+  @override
+  void onClose() {
+    developer.log('HomeController disposing', name: 'HomeController');
+    super.onClose();
   }
 }

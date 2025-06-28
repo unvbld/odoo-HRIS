@@ -1,10 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
+import 'dart:developer' as developer;
 import '../models/user_model.dart';
+import '../models/attendance_model.dart';
 
 class ApiService extends GetxService {
   static const String baseUrl = 'http://localhost:8069/api';
+  static const Duration timeoutDuration = Duration(seconds: 30);
   
   final http.Client _client = http.Client();
 
@@ -17,6 +21,62 @@ class ApiService extends GetxService {
   void onClose() {
     _client.close();
     super.onClose();
+  }
+
+  Future<ApiResponse<T>> _handleRequest<T>(
+    Future<http.Response> Function() request,
+    T Function(Map<String, dynamic>) parser,
+  ) async {
+    try {
+      final response = await request().timeout(timeoutDuration);
+      
+      if (response.body.isEmpty) {
+        return ApiResponse<T>(
+          success: false,
+          message: 'Server returned empty response',
+        );
+      }
+
+      final data = json.decode(response.body);
+      
+      if (response.statusCode == 200 && data['success'] == true) {
+        final parsedData = parser(data['data']);
+        return ApiResponse<T>(
+          success: true,
+          message: data['message'] ?? 'Request successful',
+          data: parsedData,
+        );
+      } else {
+        return ApiResponse<T>(
+          success: false,
+          message: data['message'] ?? 'Request failed',
+        );
+      }
+    } on SocketException {
+      developer.log('Network connection error', name: 'ApiService');
+      return ApiResponse<T>(
+        success: false,
+        message: 'No internet connection. Please check your network.',
+      );
+    } on HttpException {
+      developer.log('HTTP error occurred', name: 'ApiService');
+      return ApiResponse<T>(
+        success: false,
+        message: 'Server error occurred. Please try again later.',
+      );
+    } on FormatException {
+      developer.log('Invalid response format', name: 'ApiService');
+      return ApiResponse<T>(
+        success: false,
+        message: 'Invalid response from server.',
+      );
+    } catch (e) {
+      developer.log('Unexpected error: $e', name: 'ApiService');
+      return ApiResponse<T>(
+        success: false,
+        message: 'An unexpected error occurred: ${e.toString()}',
+      );
+    }
   }
 
   // Health Check
@@ -50,131 +110,82 @@ class ApiService extends GetxService {
   }
   // Login
   Future<ApiResponse<User>> login(LoginRequest request) async {
-    try {
-      final response = await _client.post(
+    return _handleRequest<User>(
+      () => _client.post(
         Uri.parse('$baseUrl/auth/login'),
         headers: _headers,
         body: json.encode(request.toJson()),
-      );
-
-      final data = json.decode(response.body);
-      
-      if (response.statusCode == 200 && data['success'] == true) {
-        final user = User.fromJson(data['data']);
-        return ApiResponse<User>(
-          success: true,
-          message: data['message'] ?? 'Login successful',
-          data: user,
-        );
-      } else {
-        return ApiResponse<User>(
-          success: false,
-          message: data['message'] ?? 'Login failed',
-        );
-      }
-    } catch (e) {
-      return ApiResponse<User>(
-        success: false,
-        message: 'Network error: ${e.toString()}',
-      );
-    }
+      ),
+      (data) => User.fromJson(data),
+    );
   }
 
   // Register
   Future<ApiResponse<User>> register(RegisterRequest request) async {
-    try {
-      final response = await _client.post(
+    return _handleRequest<User>(
+      () => _client.post(
         Uri.parse('$baseUrl/auth/register'),
         headers: _headers,
         body: json.encode(request.toJson()),
-      );
-
-      final data = json.decode(response.body);
-      
-      if (response.statusCode == 200 && data['success'] == true) {
-        final user = User.fromJson(data['data']);
-        return ApiResponse<User>(
-          success: true,
-          message: data['message'] ?? 'Registration successful',
-          data: user,
-        );
-      } else {
-        return ApiResponse<User>(
-          success: false,
-          message: data['message'] ?? 'Registration failed',
-        );
-      }
-    } catch (e) {
-      return ApiResponse<User>(
-        success: false,
-        message: 'Network error: ${e.toString()}',
-      );
-    }
+      ),
+      (data) => User.fromJson(data),
+    );
   }
 
   // Logout (with session)
   Future<ApiResponse<String>> logout(String sessionId) async {
-    try {
-      final response = await _client.post(
+    return _handleRequest<String>(
+      () => _client.post(
         Uri.parse('$baseUrl/auth/logout'),
         headers: {
           ..._headers,
           'Authorization': 'Bearer $sessionId',
         },
-      );
-
-      final data = json.decode(response.body);
-      
-      if (response.statusCode == 200) {
-        return ApiResponse<String>(
-          success: true,
-          message: data['message'] ?? 'Logout successful',
-        );
-      } else {
-        return ApiResponse<String>(
-          success: false,
-          message: data['message'] ?? 'Logout failed',
-        );
-      }
-    } catch (e) {
-      return ApiResponse<String>(
-        success: false,
-        message: 'Network error: ${e.toString()}',
-      );
-    }
+      ),
+      (data) => data['message'] ?? 'Logout successful',
+    );
   }
 
   // Get Profile (with session)
   Future<ApiResponse<User>> getProfile(String sessionId) async {
-    try {
-      final response = await _client.get(
+    return _handleRequest<User>(
+      () => _client.get(
         Uri.parse('$baseUrl/auth/profile'),
         headers: {
           ..._headers,
           'Authorization': 'Bearer $sessionId',
         },
-      );
+      ),
+      (data) => User.fromJson(data),
+    );
+  }
 
-      final data = json.decode(response.body);
-      
-      if (response.statusCode == 200 && data['success'] == true) {
-        final user = User.fromJson(data['data']);
-        return ApiResponse<User>(
-          success: true,
-          message: data['message'] ?? 'Profile retrieved',
-          data: user,
-        );
-      } else {
-        return ApiResponse<User>(
-          success: false,
-          message: data['message'] ?? 'Failed to get profile',
-        );
-      }
-    } catch (e) {
-      return ApiResponse<User>(
-        success: false,
-        message: 'Network error: ${e.toString()}',
-      );
-    }
+  // Attendance Dashboard
+  Future<ApiResponse<AttendanceDashboard>> getAttendanceDashboard(String sessionToken) async {
+    return _handleRequest<AttendanceDashboard>(
+      () => _client.get(
+        Uri.parse('$baseUrl/attendance/dashboard'),
+        headers: {
+          ..._headers,
+          'Authorization': 'Bearer $sessionToken',
+        },
+      ),
+      (data) => AttendanceDashboard.fromJson(data),
+    );
+  }
+
+  // Toggle Check-in/Check-out
+  Future<ApiResponse<CheckInOutResponse>> toggleCheckInOut(String sessionToken) async {
+    return _handleRequest<CheckInOutResponse>(
+      () => _client.post(
+        Uri.parse('$baseUrl/attendance/toggle'),
+        headers: {
+          ..._headers,
+          'Authorization': 'Bearer $sessionToken',
+        },
+        body: json.encode({}),
+      ),
+      (data) => CheckInOutResponse.fromJson(data),
+    );
   }
 }

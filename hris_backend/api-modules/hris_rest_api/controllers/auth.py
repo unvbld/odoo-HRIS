@@ -48,73 +48,61 @@ class AuthController(http.Controller):
     
     @http.route('/api/auth/login', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def login(self):
-        """Login endpoint"""
+        """Login endpoint with proper session management"""
         if request.httprequest.method == 'OPTIONS':
             return request.make_response('', headers=self._cors_headers())
         
         try:
             # Get request data
             data = json.loads(request.httprequest.data.decode('utf-8'))
-            username = data.get('username') or data.get('email')  # Accept both username and email
+            username = data.get('username') or data.get('email')
             password = data.get('password')
             
             if not username or not password:
-                return self._error_response("Username/email and password are required", 400)
+                return self._error_response("Username and password are required", 400)
             
-            # Simple authentication check
+            # Authenticate using Odoo's standard method
             try:
-                db_name = 'odoo'
-                
-                # Try to find user by username or email
-                user_rec = None
-                if '@' in username:
-                    # Looks like email, try to find user by email first
-                    user_rec = request.env['res.users'].sudo().search([
-                        ('email', '=', username), ('active', '=', True)
-                    ], limit=1)
-                    if not user_rec:
-                        # If not found by email, try by login
-                        user_rec = request.env['res.users'].sudo().search([
-                            ('login', '=', username), ('active', '=', True)
-                        ], limit=1)
-                else:
-                    # Looks like username, try login first
-                    user_rec = request.env['res.users'].sudo().search([
-                        ('login', '=', username), ('active', '=', True)
-                    ], limit=1)
-                    if not user_rec:
-                        # If not found by login, try by email
-                        user_rec = request.env['res.users'].sudo().search([
-                            ('email', '=', username), ('active', '=', True)
-                        ], limit=1)
-                
-                # Use the actual login field for authentication
-                login_field = user_rec.login if user_rec else username
-                uid = request.session.authenticate(db_name, login_field, password)
+                uid = request.session.authenticate(request.session.db, username, password)
                 
                 if uid:
                     # Get user info
-                    actual_user = request.env['res.users'].sudo().browse(uid)
+                    user = request.env['res.users'].sudo().browse(uid)
+                    
+                    # Update user's last login
+                    user.sudo().write({'login_date': datetime.now()})
+                    
+                    # Get employee info if exists
+                    employee = request.env['hr.employee'].sudo().search([
+                        ('user_id', '=', uid)
+                    ], limit=1)
+                    
+                    # Create comprehensive user data
                     user_data = {
                         'user_id': uid,
-                        'username': actual_user.login,
-                        'name': actual_user.name,
-                        'email': actual_user.email,
+                        'username': user.login,
+                        'name': user.name,
+                        'email': user.email,
                         'session_token': request.session.sid,
                         'login_time': datetime.now().isoformat(),
-                        'message': 'Authentication successful'
+                        'employee_id': employee.id if employee else None,
+                        'employee_name': employee.name if employee else user.name,
+                        'department': employee.department_id.name if employee and employee.department_id else None,
+                        'job_title': employee.job_id.name if employee and employee.job_id else None,
                     }
+                    
+                    _logger.info(f"Login successful for user {user.login} with session {request.session.sid}")
                     
                     return self._json_response(
                         data=user_data,
                         message="Login successful"
                     )
                 else:
-                    return self._error_response("Invalid username/email or password", 401)
+                    return self._error_response("Invalid username or password", 401)
                     
             except Exception as e:
                 _logger.error(f"Authentication error: {str(e)}")
-                return self._error_response(f"Authentication failed: {str(e)}", 401)
+                return self._error_response("Authentication failed", 401)
                 
         except json.JSONDecodeError:
             return self._error_response("Invalid JSON data", 400)
@@ -135,15 +123,59 @@ class AuthController(http.Controller):
             _logger.error(f"Logout error: {str(e)}")
             return self._error_response("Logout failed", 500)
     
-    @http.route('/api/auth/profile', type='http', auth='user', methods=['GET', 'OPTIONS'], csrf=False)
+    @http.route('/api/auth/profile', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
     def get_profile(self):
         """Get current user profile"""
         if request.httprequest.method == 'OPTIONS':
             return request.make_response('', headers=self._cors_headers())
         
         try:
-            user = request.env.user
-            employee = request.env['hr.employee'].search([('user_id', '=', user.id)], limit=1)
+            # Get session token from cookie or Authorization header
+            session_token = None
+            
+            # Check Cookie header
+            if request.httprequest.cookies.get('session_id'):
+                session_token = request.httprequest.cookies.get('session_id')
+                _logger.info(f"Found session_id in cookie: {session_token}")
+            
+            # Check Authorization header
+            auth_header = request.httprequest.headers.get('Authorization', '')
+            _logger.info(f"Authorization header: {auth_header}")
+            if auth_header.startswith('Bearer '):
+                session_token = auth_header.replace('Bearer ', '')
+                _logger.info(f"Found session_id in Bearer token: {session_token}")
+            
+            if not session_token:
+                _logger.error("No session token found in request")
+                return self._error_response("Session token required", 401)
+            
+            # Simple approach: use the session token to set session and get user
+            # Set the session ID to the token we received
+            original_sid = request.session.sid
+            request.session.sid = session_token
+            
+            # Try to get user from session
+            try:
+                # Force session to load data from the new session ID
+                request.session._get_session_data()
+                
+                if request.session.uid:
+                    uid = request.session.uid
+                    _logger.info(f"Successfully found user ID: {uid}")
+                else:
+                    _logger.error("No user ID found in session")
+                    return self._error_response("Invalid or expired session", 401)
+            except Exception as session_error:
+                _logger.error(f"Session loading error: {str(session_error)}")
+                # Restore original session ID
+                request.session.sid = original_sid
+                return self._error_response("Invalid or expired session", 401)
+            user = request.env['res.users'].sudo().browse(uid)
+            
+            if not user.exists():
+                return self._error_response("User not found", 404)
+            
+            employee = request.env['hr.employee'].sudo().search([('user_id', '=', user.id)], limit=1)
             
             profile_data = {
                 'user_id': user.id,

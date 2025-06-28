@@ -167,28 +167,32 @@ class HomeView extends GetView<HomeController> {
                     top: Radius.circular(25),
                   ),
                 ),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      // General Shift and Check In section
-                      _buildShiftSection(),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Time tracking section
-                      _buildTimeTrackingSection(),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Attendance summary
-                      _buildAttendanceSummary(),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Request button
-                      _buildRequestButton(),
-                    ],
+                child: RefreshIndicator(
+                  onRefresh: controller.refreshDashboard,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        // General Shift and Check In section
+                        _buildShiftSection(),
+                        
+                        const SizedBox(height: 24),
+                        
+                        // Time tracking section
+                        _buildTimeTrackingSection(),
+                        
+                        const SizedBox(height: 24),
+                        
+                        // Attendance summary
+                        _buildAttendanceSummary(),
+                        
+                        const SizedBox(height: 24),
+                        
+                        // Request button
+                        _buildRequestButton(),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -236,7 +240,7 @@ class HomeView extends GetView<HomeController> {
                 ],
               ),
               Obx(() => ElevatedButton(
-                onPressed: controller.toggleCheckInOut,
+                onPressed: controller.isLoading.value ? null : controller.toggleCheckInOut,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: controller.isCheckedIn.value 
                       ? Colors.orange 
@@ -250,12 +254,21 @@ class HomeView extends GetView<HomeController> {
                     borderRadius: BorderRadius.circular(25),
                   ),
                 ),
-                child: Text(
-                  controller.isCheckedIn.value ? 'Check Out' : 'Check In',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: controller.isLoading.value
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(
+                        controller.isCheckedIn.value ? 'Check Out' : 'Check In',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               )),
             ],
           ),

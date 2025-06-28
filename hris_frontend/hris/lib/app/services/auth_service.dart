@@ -1,92 +1,182 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/models/user_model.dart';
 import '../data/providers/api_service.dart';
 
-class AuthService extends GetxService {
-  static const String _sessionKey = 'session_id';
-  static const String _userKey = 'user_data';
+class AuthService extends GetxController {
+  final ApiService _apiService = Get.find<ApiService>();
   
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
-  late SharedPreferences _prefs;
-  late ApiService _apiService;
-
+  // Observable variables
   final Rx<User?> _currentUser = Rx<User?>(null);
-  final RxBool _isLoggedIn = false.obs;
   final RxBool _isLoading = false.obs;
-
+  final RxString _sessionToken = ''.obs;
+  
   // Getters
   User? get currentUser => _currentUser.value;
-  bool get isLoggedIn => _isLoggedIn.value;
+  bool get isLoggedIn => _currentUser.value != null && _sessionToken.value.isNotEmpty;
   bool get isLoading => _isLoading.value;
-
+  String get sessionToken => _sessionToken.value;
+  
+  // Storage keys
+  static const String _userKey = 'user_data';
+  static const String _sessionKey = 'session_token';
+  
   @override
-  Future<void> onInit() async {
+  void onInit() {
     super.onInit();
-    _prefs = await SharedPreferences.getInstance();
-    _apiService = Get.find<ApiService>();
+    // Don't call _loadUserFromStorage here since it's async
+  }
+  
+  /// Load initial data - called from main.dart
+  Future<void> loadInitialData() async {
     await _loadUserFromStorage();
   }
-
-  // Load user data from storage on app start
+  
+  /// Load user data and session from local storage
   Future<void> _loadUserFromStorage() async {
     try {
-      final sessionId = await _secureStorage.read(key: _sessionKey);
-      final userData = _prefs.getString(_userKey);
-        if (sessionId != null && userData != null) {
-        final userMap = <String, dynamic>{};
-          // Safe parsing of user data
-        try {
-          for (final pair in userData.split('&')) {
-            final parts = pair.split('=');
-            if (parts.length >= 2) {
-              final key = parts[0];
-              final value = Uri.decodeComponent(parts[1]);
-              userMap[key] = value;
-            }
-          }
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Load session token
+      final sessionToken = prefs.getString(_sessionKey);
+      if (sessionToken != null && sessionToken.isNotEmpty) {
+        _sessionToken.value = sessionToken;
+        
+        // Load user data
+        final userJson = prefs.getString(_userKey);
+        if (userJson != null && userJson.isNotEmpty) {
+          final userData = json.decode(userJson);
+          _currentUser.value = User.fromJson(userData);
           
-          final user = User.fromJson({
-            ...userMap,
-            'session_id': sessionId,
-          });
-          
-          _currentUser.value = user;
-          _isLoggedIn.value = true;
-        } catch (e) {
-          print('Error parsing user data: $e');
-          await clearUserData();
+          print('User data loaded from storage: ${_currentUser.value?.name}');
+          // Don't validate session during initial load - let user use the app
+          // Only validate when making API calls
         }
       }
     } catch (e) {
       print('Error loading user from storage: $e');
-      await clearUserData();
+      // Don't clear session on error - just log it
     }
   }
-  // Login
-  Future<ApiResponse<User>> login(String email, String password) async {
+  
+  /// Save user data and session to local storage
+  Future<void> _saveUserToStorage(User user, String sessionToken) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Save session token
+      await prefs.setString(_sessionKey, sessionToken);
+      _sessionToken.value = sessionToken;
+      
+      // Save user data
+      final userJson = json.encode(user.toJson());
+      await prefs.setString(_userKey, userJson);
+      _currentUser.value = user;
+      
+      print('User data saved to storage: ${user.name}');
+    } catch (e) {
+      print('Error saving user to storage: $e');
+      throw Exception('Failed to save user data');
+    }
+  }
+  
+  /// Clear session data from storage
+  Future<void> _clearSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_userKey);
+      await prefs.remove(_sessionKey);
+      
+      _currentUser.value = null;
+      _sessionToken.value = '';
+      
+      print('Session cleared from storage');
+    } catch (e) {
+      print('Error clearing session: $e');
+    }
+  }
+  
+  /// Validate current session by checking profile
+  Future<bool> _validateSession() async {
+    if (_sessionToken.value.isEmpty) return false;
+    
+    try {
+      final response = await _apiService.getProfile(_sessionToken.value);
+      if (response.success && response.data != null) {
+        // Update user data with latest from server
+        _currentUser.value = response.data;
+        return true;
+      } else {
+        // Don't clear session immediately - just return false
+        // Let the user try to use the app, session will be cleared only on logout
+        print('Session validation failed, but keeping session for now');
+        return false;
+      }
+    } catch (e) {
+      print('Session validation error: $e');
+      // Don't clear session on network error - keep it for offline use
+      return false;
+    }
+  }
+  
+  /// Login with username/email and password
+  Future<ApiResponse<User>> login(String username, String password) async {
     _isLoading.value = true;
     
     try {
-      final loginRequest = LoginRequest(username: email, password: password);
+      final loginRequest = LoginRequest(
+        username: username,
+        password: password,
+      );
+      
       final response = await _apiService.login(loginRequest);
       
       if (response.success && response.data != null) {
         final user = response.data!;
-        await _saveUserToStorage(user);
-        _currentUser.value = user;
-        _isLoggedIn.value = true;
+        final sessionToken = user.sessionId ?? '';
+        
+        if (sessionToken.isNotEmpty) {
+          // Save session and user data
+          await _saveUserToStorage(user, sessionToken);
+          
+          print('Login successful for user: ${user.name}');
+          return ApiResponse<User>(
+            success: true,
+            message: 'Login successful',
+            data: user,
+          );
+        } else {
+          return ApiResponse<User>(
+            success: false,
+            message: 'No session token received',
+          );
+        }
+      } else {
+        return ApiResponse<User>(
+          success: false,
+          message: response.message,
+        );
       }
-      
-      return response;
+    } catch (e) {
+      print('Login error: $e');
+      return ApiResponse<User>(
+        success: false,
+        message: 'Login failed: ${e.toString()}',
+      );
     } finally {
       _isLoading.value = false;
     }
   }
-
-  // Register
-  Future<ApiResponse<User>> register(String username, String name, String email, String password, String confirmPassword) async {
+  
+  /// Register new user
+  Future<ApiResponse<User>> register(
+    String username,
+    String name,
+    String email,
+    String password,
+    [String? confirmPassword]
+  ) async {
     _isLoading.value = true;
     
     try {
@@ -97,84 +187,117 @@ class AuthService extends GetxService {
         password: password,
         confirmPassword: confirmPassword,
       );
+      
       final response = await _apiService.register(registerRequest);
       
-      if (response.success && response.data != null) {
-        final user = response.data!;
-        await _saveUserToStorage(user);
-        _currentUser.value = user;
-        _isLoggedIn.value = true;
+      if (response.success) {
+        // After successful registration, try to login
+        await Future.delayed(Duration(milliseconds: 500));
+        return await login(username, password);
+      } else {
+        return ApiResponse<User>(
+          success: false,
+          message: response.message,
+        );
       }
-      
-      return response;
+    } catch (e) {
+      print('Registration error: $e');
+      return ApiResponse<User>(
+        success: false,
+        message: 'Registration failed: ${e.toString()}',
+      );
     } finally {
       _isLoading.value = false;
     }
   }
-
-  // Logout
-  Future<ApiResponse<String>> logout() async {
+  
+  /// Logout user
+  Future<ApiResponse<void>> logout() async {
     _isLoading.value = true;
     
     try {
-      ApiResponse<String> response = ApiResponse<String>(
-        success: true,
-        message: 'Logged out successfully',
-      );
-      
-      if (_currentUser.value?.sessionId != null) {
-        response = await _apiService.logout(_currentUser.value!.sessionId!);
+      // Call logout API if we have a session token
+      if (_sessionToken.value.isNotEmpty) {
+        try {
+          await _apiService.logout(_sessionToken.value);
+        } catch (e) {
+          print('Logout API call failed: $e');
+          // Continue with local logout even if API fails
+        }
       }
       
-      // Clear local data regardless of API response
-      await clearUserData();
+      // Clear local session regardless of API response
+      await _clearSession();
       
-      return response;
+      print('Logout completed');
+      return ApiResponse<void>(
+        success: true,
+        message: 'Logout successful',
+      );
+    } catch (e) {
+      print('Logout error: $e');
+      // Still clear local session even if API call fails
+      await _clearSession();
+      
+      return ApiResponse<void>(
+        success: true,
+        message: 'Logout completed',
+      );
     } finally {
       _isLoading.value = false;
     }
   }
-
-  // Save user to storage
-  Future<void> _saveUserToStorage(User user) async {
+  
+  /// Get current user profile
+  Future<ApiResponse<User>> getProfile() async {
     try {
-      if (user.sessionId != null) {
-        await _secureStorage.write(key: _sessionKey, value: user.sessionId!);
+      if (_sessionToken.value.isEmpty) {
+        return ApiResponse<User>(
+          success: false,
+          message: 'No active session',
+        );
       }
-        // Simple serialization for user data (excluding sensitive session)
-      final userData = 'id=${user.id}&name=${Uri.encodeComponent(user.name)}&email=${Uri.encodeComponent(user.email)}';
-      await _prefs.setString(_userKey, userData);
+      
+      final response = await _apiService.getProfile(_sessionToken.value);
+      
+      if (response.success && response.data != null) {
+        // Update stored user data
+        final user = response.data!;
+        _currentUser.value = user;
+        
+        // Update storage
+        await _saveUserToStorage(user, _sessionToken.value);
+        
+        return response;
+      } else {
+        // Profile fetch failed, might mean session expired
+        if (response.message.toLowerCase().contains('unauthorized') ||
+            response.message.toLowerCase().contains('expired')) {
+          await _clearSession();
+        }
+        return response;
+      }
     } catch (e) {
-      print('Error saving user to storage: $e');
+      print('Get profile error: $e');
+      return ApiResponse<User>(
+        success: false,
+        message: 'Failed to get profile: ${e.toString()}',
+      );
     }
   }
-
-  // Clear user data
-  Future<void> clearUserData() async {
-    try {
-      await _secureStorage.delete(key: _sessionKey);
-      await _prefs.remove(_userKey);
-      _currentUser.value = null;
-      _isLoggedIn.value = false;
-    } catch (e) {
-      print('Error clearing user data: $e');
-    }
-  }
-
-  // Check if session is still valid
-  Future<bool> validateSession() async {
-    if (_currentUser.value?.sessionId == null) return false;
+  
+  /// Check if user is authenticated
+  Future<bool> isAuthenticated() async {
+    if (!isLoggedIn) return false;
     
-    try {
-      final response = await _apiService.getProfile(_currentUser.value!.sessionId!);
-      if (!response.success) {
-        await clearUserData();
-        return false;
-      }
-      return true;
-    } catch (e) {
-      await clearUserData();
-      return false;
+    // Validate session
+    return await _validateSession();
+  }
+  
+  /// Refresh user data
+  Future<void> refreshUser() async {
+    if (isLoggedIn) {
+      await getProfile();
     }
   }
 }

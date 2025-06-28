@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'dart:developer' as developer;
 
 import 'app/routes/app_pages.dart';
 import 'app/data/providers/api_service.dart';
@@ -14,7 +15,7 @@ void main() async {
   runApp(
     GetMaterialApp(
       title: "HRIS Application",
-      initialRoute: AppPages.INITIAL,
+      initialRoute: Routes.AUTH, // Always start with auth, let AuthService decide
       getPages: AppPages.routes,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -26,17 +27,17 @@ void main() async {
 }
 
 Future<void> initServices() async {
-  print('Initializing services...');
+  developer.log('Initializing services...', name: 'Main');
   
   // Initialize API Service
   Get.put(ApiService(), permanent: true);
-  print('API Service initialized');
+  developer.log('API Service initialized', name: 'Main');
   
   // Initialize Auth Service
-  Get.put(AuthService(), permanent: true);
+  final authService = AuthService();
+  Get.put(authService, permanent: true);
   
-  // Initialize AuthService properly
-  final authService = Get.find<AuthService>();
-  await authService.onInit();
-  print('Auth Service initialized');
+  // Load initial data
+  await authService.loadInitialData();
+  developer.log('Auth Service initialized', name: 'Main');
 }
