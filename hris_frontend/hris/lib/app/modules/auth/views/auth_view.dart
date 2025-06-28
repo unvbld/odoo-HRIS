@@ -15,9 +15,9 @@ class AuthView extends GetView<AuthController> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: AppTheme.largePadding,
+              padding: EdgeInsets.all(24.0),
               child: AppCard(
-                padding: AppTheme.extraLargePadding,
+                padding: EdgeInsets.all(32.0),
                 margin: EdgeInsets.zero,
                 elevation: 8,
                 child: Container(
@@ -39,7 +39,7 @@ class AuthView extends GetView<AuthController> {
                           size: 40,
                         ),
                       ),
-                      const SizedBox(height: AppTheme.largeSpacing),
+                      SizedBox(height: 24.0),
                       
                       // Title
                       Text(
@@ -49,7 +49,7 @@ class AuthView extends GetView<AuthController> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: AppTheme.smallSpacing),
+                      SizedBox(height: 8.0),
                       
                       Text(
                         controller.isLoginMode.value 
@@ -59,12 +59,12 @@ class AuthView extends GetView<AuthController> {
                           color: AppTheme.textSecondary,
                         ),
                       ),
-                      const SizedBox(height: AppTheme.extraLargeSpacing),
+                      SizedBox(height: 32.0),
                       
                       // Error Message
                       if (controller.errorMessage.value.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: AppTheme.mediumSpacing),
+                          padding: EdgeInsets.only(bottom: 16.0),
                           child: AppErrorMessage(
                             message: controller.errorMessage.value,
                           ),
@@ -76,7 +76,7 @@ class AuthView extends GetView<AuthController> {
                       else 
                         _buildRegisterForm(),
                       
-                      const SizedBox(height: AppTheme.largeSpacing),
+                      SizedBox(height: 24.0),
                       
                       // Submit Button
                       AppButton(
@@ -89,7 +89,7 @@ class AuthView extends GetView<AuthController> {
                         type: ButtonType.primary,
                       ),
                       
-                      const SizedBox(height: AppTheme.largeSpacing),
+                      SizedBox(height: 32.0),
                       
                       // Toggle Mode
                       Row(
@@ -116,7 +116,7 @@ class AuthView extends GetView<AuthController> {
                         ],
                       ),
                       
-                      const SizedBox(height: AppTheme.mediumSpacing),
+                      SizedBox(height: 16.0),
                       
                       // API Test Button
                       TextButton.icon(
@@ -124,7 +124,7 @@ class AuthView extends GetView<AuthController> {
                         icon: const Icon(Icons.api, size: 16),
                         label: const Text('Test API Connection'),
                         style: TextButton.styleFrom(
-                          foregroundColor: AppTheme.textLight,
+                          foregroundColor: Colors.white70,
                         ),
                       ),
                     ],

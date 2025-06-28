@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'dart:developer' as developer;
@@ -234,16 +235,62 @@ class ApiService extends GetxService {
 
   // Toggle Check-in/Check-out
   Future<ApiResponse<CheckInOutResponse>> toggleCheckInOut(String sessionToken) async {
-    return _handleRequest<CheckInOutResponse>(
-      () => _client.post(
+    try {
+      final response = await _client.post(
         Uri.parse('$baseUrl/attendance/toggle'),
         headers: {
           ..._headers,
           'Authorization': 'Bearer $sessionToken',
         },
         body: json.encode({}),
-      ),
-      (data) => CheckInOutResponse.fromJson(data),
-    );
+      ).timeout(Duration(seconds: 15)); // Shorter timeout for attendance actions
+      
+      if (response.body.isEmpty) {
+        return ApiResponse<CheckInOutResponse>(
+          success: false,
+          message: 'Server returned empty response',
+        );
+      }
+
+      final data = json.decode(response.body);
+      
+      if (response.statusCode == 200 && data['success'] == true) {
+        final rawData = data['data'];
+        
+        if (rawData != null) {
+          final parsedData = CheckInOutResponse.fromJson(rawData);
+          return ApiResponse<CheckInOutResponse>(
+            success: true,
+            message: data['message'] ?? 'Request successful',
+            data: parsedData,
+          );
+        } else {
+          return ApiResponse<CheckInOutResponse>(
+            success: true,
+            message: data['message'] ?? 'Request successful',
+          );
+        }
+      } else {
+        return ApiResponse<CheckInOutResponse>(
+          success: false,
+          message: data['message'] ?? 'Request failed',
+        );
+      }
+    } on TimeoutException {
+      return ApiResponse<CheckInOutResponse>(
+        success: false,
+        message: 'Request timeout. Please try again.',
+      );
+    } on SocketException {
+      return ApiResponse<CheckInOutResponse>(
+        success: false,
+        message: 'Network error. Please check your connection.',
+      );
+    } catch (e) {
+      return ApiResponse<CheckInOutResponse>(
+        success: false,
+        message: 'Error: ${e.toString()}',
+      );
+    }
   }
 }

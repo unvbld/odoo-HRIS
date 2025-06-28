@@ -289,59 +289,133 @@ class AttendanceController(http.Controller):
             
             if existing_attendance:
                 # Check out
-                check_out_time = self._get_current_datetime_local()
-                # Convert to UTC for storage
-                check_out_utc = check_out_time.astimezone(pytz.UTC).replace(tzinfo=None)
-                existing_attendance.sudo().write({
-                    'check_out': check_out_utc
-                })
-                
-                # Calculate working hours using local times
-                check_in_local = existing_attendance.check_in
-                if check_in_local.tzinfo is None:
-                    # Assume stored time is in local timezone
-                    indonesia_tz = pytz.timezone('Asia/Jakarta')
-                    check_in_local = indonesia_tz.localize(check_in_local)
-                else:
-                    check_in_local = check_in_local.astimezone(pytz.timezone('Asia/Jakarta'))
-                
-                duration = check_out_time - check_in_local
-                hours = int(duration.total_seconds() // 3600)
-                minutes = int((duration.total_seconds() % 3600) // 60)
-                seconds = int(duration.total_seconds() % 60)
-                working_hours = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                
-                check_out_formatted = self._format_time_local(check_out_time)
-                
-                return self._json_response({
-                    'action': 'check_out',
-                    'check_out_time': check_out_formatted,
-                    'working_hours': working_hours,
-                    'is_checked_in': False,
-                    'message': f'Successfully checked out at {check_out_formatted}'
-                }, message="Check out successful")
+                try:
+                    with request.env.cr.savepoint():
+                        check_out_time = self._get_current_datetime_local()
+                        # Convert to UTC for storage
+                        check_out_utc = check_out_time.astimezone(pytz.UTC).replace(tzinfo=None)
+                        
+                        # Check for constraint violations before update
+                        if existing_attendance.check_out:
+                            return self._error_response("Already checked out for today", 400)
+                        
+                        # Handle potential constraint violations
+                        try:
+                            # First, check if this would create a duplicate in overtime table
+                            request.env.cr.execute("""
+                                SELECT COUNT(*) FROM hr_attendance_overtime 
+                                WHERE employee_id = %s AND date = %s
+                            """, (employee.id, today.strftime('%Y-%m-%d')))
+                            
+                            overtime_count = request.env.cr.fetchone()[0]
+                            if overtime_count > 0:
+                                # Delete existing overtime record to prevent constraint violation
+                                request.env.cr.execute("""
+                                    DELETE FROM hr_attendance_overtime 
+                                    WHERE employee_id = %s AND date = %s
+                                """, (employee.id, today.strftime('%Y-%m-%d')))
+                            
+                            existing_attendance.sudo().write({
+                                'check_out': check_out_utc
+                            })
+                        except Exception as constraint_error:
+                            _logger.error(f"Constraint error during checkout: {str(constraint_error)}")
+                            # Try alternative approach - update without triggering overtime computation
+                            request.env.cr.execute("""
+                                UPDATE hr_attendance 
+                                SET check_out = %s 
+                                WHERE id = %s
+                            """, (check_out_utc, existing_attendance.id))
+                            request.env.cr.commit()
+                        
+                        # Force commit the transaction
+                        request.env.cr.commit()
+                        
+                        # Calculate working hours using local times
+                        check_in_local = existing_attendance.check_in
+                        if check_in_local.tzinfo is None:
+                            # Assume stored time is in local timezone
+                            indonesia_tz = pytz.timezone('Asia/Jakarta')
+                            check_in_local = indonesia_tz.localize(check_in_local)
+                        else:
+                            check_in_local = check_in_local.astimezone(pytz.timezone('Asia/Jakarta'))
+                        
+                        duration = check_out_time - check_in_local
+                        hours = int(duration.total_seconds() // 3600)
+                        minutes = int((duration.total_seconds() % 3600) // 60)
+                        seconds = int(duration.total_seconds() % 60)
+                        working_hours = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                        
+                        check_out_formatted = self._format_time_local(check_out_time)
+                        
+                        return self._json_response({
+                            'action': 'check_out',
+                            'check_out_time': check_out_formatted,
+                            'working_hours': working_hours,
+                            'is_checked_in': False,
+                            'message': f'Successfully checked out at {check_out_formatted}'
+                        }, message="Check out successful")
+                        
+                except Exception as checkout_error:
+                    _logger.error(f"Error during checkout: {str(checkout_error)}")
+                    # Rollback any failed transaction
+                    try:
+                        request.env.cr.rollback()
+                    except:
+                        pass
+                    return self._error_response(f"Checkout failed: {str(checkout_error)}", 500)
             else:
                 # Check in
-                check_in_time = self._get_current_datetime_local()
-                # Convert to UTC for storage
-                check_in_utc = check_in_time.astimezone(pytz.UTC).replace(tzinfo=None)
-                
-                attendance = request.env['hr.attendance'].sudo().create({
-                    'employee_id': employee.id,
-                    'check_in': check_in_utc,
-                })
-                
-                check_in_formatted = self._format_time_local(check_in_time)
-                
-                return self._json_response({
-                    'action': 'check_in',
-                    'check_in_time': check_in_formatted,
-                    'is_checked_in': True,
-                    'message': f'Successfully checked in at {check_in_formatted}'
-                }, message="Check in successful")
+                try:
+                    with request.env.cr.savepoint():
+                        check_in_time = self._get_current_datetime_local()
+                        # Convert to UTC for storage
+                        check_in_utc = check_in_time.astimezone(pytz.UTC).replace(tzinfo=None)
+                        
+                        # Check for duplicate check-ins
+                        duplicate_check = request.env['hr.attendance'].sudo().search([
+                            ('employee_id', '=', employee.id),
+                            ('check_in', '>=', today.strftime('%Y-%m-%d 00:00:00')),
+                            ('check_in', '<', (today + timedelta(days=1)).strftime('%Y-%m-%d 00:00:00')),
+                            ('check_out', '=', False)
+                        ], limit=1)
+                        
+                        if duplicate_check:
+                            return self._error_response("Already checked in for today", 400)
+                        
+                        attendance = request.env['hr.attendance'].sudo().create({
+                            'employee_id': employee.id,
+                            'check_in': check_in_utc,
+                        })
+                        
+                        # Force commit the transaction
+                        request.env.cr.commit()
+                        
+                        check_in_formatted = self._format_time_local(check_in_time)
+                        
+                        return self._json_response({
+                            'action': 'check_in',
+                            'check_in_time': check_in_formatted,
+                            'is_checked_in': True,
+                            'message': f'Successfully checked in at {check_in_formatted}'
+                        }, message="Check in successful")
+                        
+                except Exception as checkin_error:
+                    _logger.error(f"Error during checkin: {str(checkin_error)}")
+                    # Rollback any failed transaction
+                    try:
+                        request.env.cr.rollback()
+                    except:
+                        pass
+                    return self._error_response(f"Checkin failed: {str(checkin_error)}", 500)
                 
         except Exception as e:
             _logger.error(f"Error during toggle check-in/out: {str(e)}")
+            # Rollback any failed transaction
+            try:
+                request.env.cr.rollback()
+            except:
+                pass
             return self._error_response(f"Error during check-in/out: {str(e)}", 500)
 
     @http.route('/api/attendance/checkin', type='http', auth='user', methods=['POST', 'OPTIONS'], csrf=False)

@@ -222,7 +222,28 @@ class HomeController extends GetxController {
     try {
       isLoading.value = true;
       
+      // Show loading dialog
+      Get.dialog(
+        const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Processing...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+        barrierDismissible: false,
+      );
+      
       if (!_authService.isLoggedIn || _authService.sessionToken.isEmpty) {
+        Get.back(); // Close loading dialog
         developer.log('No valid session found during check-in/out', name: 'HomeController');
         Get.snackbar(
           'Authentication Required', 
@@ -236,6 +257,8 @@ class HomeController extends GetxController {
 
       final sessionToken = _authService.sessionToken;
       final response = await _apiService.toggleCheckInOut(sessionToken);
+      
+      Get.back(); // Close loading dialog
       
       if (response.success && response.data != null) {
         final result = response.data!;
@@ -252,6 +275,7 @@ class HomeController extends GetxController {
             backgroundColor: Colors.green,
             colorText: Colors.white,
             icon: const Icon(Icons.check_circle, color: Colors.white),
+            duration: const Duration(seconds: 3),
           );
         } else {
           checkOutTime.value = result.checkOutTime ?? '';
@@ -263,6 +287,7 @@ class HomeController extends GetxController {
             backgroundColor: Colors.orange,
             colorText: Colors.white,
             icon: const Icon(Icons.logout, color: Colors.white),
+            duration: const Duration(seconds: 3),
           );
         }
         
@@ -275,6 +300,7 @@ class HomeController extends GetxController {
           response.message,
           backgroundColor: Colors.red,
           colorText: Colors.white,
+          duration: const Duration(seconds: 5),
         );
       }
     } catch (e) {
